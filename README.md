@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo.svg" width="120" alt="gamacros logo" />
+</p>
+
 ## gamacros
 
 Highly effective conversion of a gamepad into a macropad for applications. gamacros listens for controller input and maps it to keyboard shortcuts based on the currently active application.

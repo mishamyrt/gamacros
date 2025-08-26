@@ -1,0 +1,17 @@
+<svg fill="none" height="57" viewBox="0 0 87 57" width="87" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <style>
+    /* Default (light) */
+    .theme-fill { fill: #000 !important; }
+    /* Dark mode */
+    @media (prefers-color-scheme: dark) {
+      .theme-fill { fill: #fff !important; }
+    }
+  </style>
+  <clipPath id="a">
+    <path d="m0 0h87v57h-87z"/>
+  </clipPath>
+  <g clip-path="url(#a)" class="theme-fill">
+    <path d="m17.8058 53.67v-11.8374l-13.1044-38.48059h6.6246l10.2446 32.43519h.1448c6.7694-9.4482 10.498-17.376 10.498-26.57079 0-2.2806-.0724-3.3304-.362-5.8644h5.9006c.2534 1.9186.3258 3.4028.3258 5.8644 0 11.69259-4.9232 20.48919-13.9732 32.76099v11.6926z"/>
+    <path d="m47.068 14.0308 3.982-3.982 13.3578 13.756 13.3578-13.756 3.982 3.982-13.4302 13.7922 13.4302 13.8284-3.982 3.982-13.3578-13.756-13.3578 13.756-3.982-3.982 13.4302-13.8284z"/>
+  </g>
+</svg>
