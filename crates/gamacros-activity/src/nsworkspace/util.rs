@@ -9,6 +9,7 @@ pub(crate) unsafe fn make_nsstring(string: &str) -> id {
 }
 
 #[cfg(test)]
+#[allow(improper_ctypes, unexpected_cfgs)]
 mod tests {
     use std::ffi::c_char;
 

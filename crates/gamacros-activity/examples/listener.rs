@@ -7,7 +7,7 @@ fn main() {
 
     thread::spawn(move || {
         while let Ok(event) = event_rx.recv() {
-            println!("Event: {:?}", event);
+            println!("Event: {event:?}");
         }
     });
 

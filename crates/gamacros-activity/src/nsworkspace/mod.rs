@@ -33,7 +33,7 @@ pub fn request_stop() {
     unsafe { request_stop_impl(); }
 }
 
-#[allow(improper_ctypes)]
+#[allow(improper_ctypes, unexpected_cfgs)]
 unsafe fn request_stop_impl() {
     use cocoa::base::{id, nil};
     use objc::{class, msg_send, sel, sel_impl};

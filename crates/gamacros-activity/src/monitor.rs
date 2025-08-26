@@ -1,5 +1,4 @@
 use std::sync::mpsc;
-use std::thread;
 
 use crate::nsworkspace::{start_nsworkspace_listener, NSWorkspaceError};
 
