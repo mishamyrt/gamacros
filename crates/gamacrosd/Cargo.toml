@@ -1,0 +1,19 @@
+[package]
+name = "gamacrosd"
+version = "0.1.0"
+publish = false
+authors = { workspace = true }
+edition = { workspace = true }
+rust-version = { workspace = true }
+homepage = { workspace = true }
+documentation = { workspace = true }
+repository = { workspace = true }
+license = { workspace = true }
+
+[dependencies]
+gamacros-controller = { workspace = true }
+gamacros-keypress = { workspace = true }
+gamacros-profile = { workspace = true }
+gamacros-activity = { workspace = true }
+ctrlc = "3.4.5"
+crossbeam-channel = "0.5"

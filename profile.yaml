@@ -1,0 +1,40 @@
+version: 1
+gamepads:
+  # Switch controller pro
+  - vid: 0x57e
+    pid: 0x2009
+    mapping:
+      a: b
+      b: a
+      x: y
+      y: x
+
+
+apps:
+  # Cursor
+  com.todesktop.230313mzl4w4u92:
+    - trigger: lb
+      action: option+space
+    - trigger: rb
+      action: cmd+z
+    - trigger: lt+rt
+      action: cmd+shift+l
+      vibrate: 100
+    - trigger: y
+      action: cmd+z
+    - trigger: b
+      action: enter
+    - trigger: a
+      action: escape
+    - trigger: select
+      action: cmd+p
+    - trigger: start
+      action: cmd+shift+l
+    - trigger: dpad
+      action:
+        down: arrow_down
+        up: arrow_up
+        left: arrow_left
+        right: arrow_right
+
+
