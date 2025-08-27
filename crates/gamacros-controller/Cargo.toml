@@ -1,6 +1,6 @@
 [package]
 name = "gamacros-controller"
-version = "0.1.0"
+version = "0.0.0"
 publish = false
 authors = { workspace = true }
 edition = { workspace = true }
@@ -16,7 +16,7 @@ sdl2-backend = []
 
 [dependencies]
 thiserror = { workspace = true }
-sdl2 = { version = "0.37", features = ["bundled", "static-link"], optional = false }
-crossbeam-channel = "0.5"
+sdl2 = { workspace = true }
+crossbeam-channel = { workspace = true }
 gamacros-bit-derive = { workspace = true }
 gamacros-bit-mask = { workspace = true }

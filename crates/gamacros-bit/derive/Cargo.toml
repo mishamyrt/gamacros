@@ -1,16 +1,23 @@
 [package]
 name = "gamacros-bit-derive"
 version = "0.0.0"
-edition = { workspace = true }
 publish = false
+authors = { workspace = true }
+edition = { workspace = true }
+rust-version = { workspace = true }
+homepage = { workspace = true }
+documentation = { workspace = true }
+repository = { workspace = true }
+license = { workspace = true }
+
 
 [lib]
 proc-macro = true
 
 [dependencies]
-syn = { version = "2", features = ["full"] }
-quote = "1"
-proc-macro2 = "1"
+syn = { workspace = true }
+quote = { workspace = true }
+proc-macro2 = { workspace = true }
 
 [dev-dependencies]
 gamacros-bit-mask = { workspace = true }

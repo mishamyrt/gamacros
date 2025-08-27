@@ -310,15 +310,10 @@ dependencies = [
 [[package]]
 name = "gamacros-bit-mask"
 version = "0.0.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
 
 [[package]]
 name = "gamacros-controller"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "crossbeam-channel",
  "gamacros-bit-derive",
@@ -337,7 +332,7 @@ dependencies = [
 
 [[package]]
 name = "gamacros-profile"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "gamacros-bit-mask",
  "gamacros-controller",
