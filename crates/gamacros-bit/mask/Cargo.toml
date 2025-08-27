@@ -9,3 +9,22 @@ homepage = { workspace = true }
 documentation = { workspace = true }
 repository = { workspace = true }
 license = { workspace = true }
+
+[dev-dependencies]
+gamacros-bit-derive = { workspace = true }
+
+[[example]]
+name = "basic_usage"
+path = "examples/basic_usage.rs"
+
+[[example]]
+name = "with_derive"
+path = "examples/with_derive.rs"
+
+[[example]]
+name = "atomic_usage"
+path = "examples/atomic_usage.rs"
+
+[[example]]
+name = "macro_pad"
+path = "examples/macro_pad.rs"

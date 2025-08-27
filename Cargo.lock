@@ -310,6 +310,9 @@ dependencies = [
 [[package]]
 name = "gamacros-bit-mask"
 version = "0.0.0"
+dependencies = [
+ "gamacros-bit-derive",
+]
 
 [[package]]
 name = "gamacros-controller"
