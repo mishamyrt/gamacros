@@ -40,7 +40,9 @@ unsafe fn request_stop_impl() {
 
     let app: id = msg_send![class!(NSApplication), sharedApplication];
     let _: () = msg_send![app,
-        performSelectorOnMainThread: sel!(stop:)
+        // Request full application termination on the main thread to ensure
+        // the NSApplication run loop exits reliably.
+        performSelectorOnMainThread: sel!(terminate:)
         withObject: nil
         waitUntilDone: false
     ];

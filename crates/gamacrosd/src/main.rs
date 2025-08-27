@@ -1,13 +1,22 @@
-mod runtime;
+mod gamacros;
 
-use gamacros_controller::{ControllerEvent, ControllerManager};
+use gamacros_controller::{Button, ControllerEvent, ControllerManager};
 use gamacros_keypress::Performer;
-use gamacros_profile::{Profile, TriggerPhase};
+use gamacros_profile::{parse_profile, Action, Rule, Profile, TriggerPhase};
 use gamacros_activity::{Monitor, Event as ActivityEvent, request_stop};
-use std::{collections::HashMap, time::Duration, fs};
+use std::{time::Duration, fs};
 use crossbeam_channel::{select, unbounded};
 
-use crate::runtime::{build_runtime, ProfileRuntime, RuntimeAction};
+use crate::{gamacros::Gamacros};
+
+fn load_profile() -> Profile {
+    let profile_path = std::env::current_dir()
+        .ok()
+        .map(|p| p.join("profile.yaml"))
+        .unwrap_or_else(|| std::path::PathBuf::from("profile.yaml"));
+    let input = fs::read_to_string(&profile_path).ok().unwrap();
+    parse_profile(&input).unwrap()
+}
 
 fn main() {
     // Handle Ctrl+C to exit cleanly
@@ -31,28 +40,19 @@ fn main() {
 
     // Run the main event loop in a background thread while the main thread runs the monitor loop.
     let event_loop = std::thread::spawn(move || {
-        let manager = ControllerManager::new().expect("failed to start controller manager");
+        let manager =
+            ControllerManager::new().expect("failed to start controller manager");
         let rx = manager.subscribe();
         let mut keypress = Performer::new().expect("failed to start keypress");
 
         // TODO: add file watch and hot-reload.
-        let profile_path = std::env::current_dir()
-            .ok()
-            .map(|p| p.join("profile.yaml"))
-            .unwrap_or_else(|| std::path::PathBuf::from("profile.yaml"));
-        let profile = fs::read_to_string(&profile_path)
-            .ok()
-            .and_then(|s| Profile::from_yaml_str(&s).ok())
-            .unwrap_or_else(Profile::empty);
+        let profile = load_profile();
+        let gamacros = Gamacros::new(profile);
 
-        let mut runtimes: HashMap<u32, ProfileRuntime> = HashMap::new();
-        let mut current_app: String = String::new();
-
-        // Seed runtimes for already-known controllers (enumerated before our subscription)
         for info in manager.controllers() {
-            let runtime =
-                build_runtime(&profile, info.vendor_id, info.product_id, &current_app);
-            runtimes.insert(info.id, runtime);
+            if let Err(e) = gamacros.add_device(info.id, info.vendor_id, info.product_id) {
+                eprintln!("Failed to add device: {e}");
+            }
         }
 
         println!("gamacrosd started. Listening for controller and activity events.");
@@ -62,52 +62,39 @@ fn main() {
                     break;
                 }
                 recv(activity_rx) -> msg => {
-                    if let Ok(ActivityEvent::AppChange(bundle_id)) = msg {
-                        println!("App change: {bundle_id}");
-                        current_app = bundle_id.clone();
-                        for rt in runtimes.values_mut() {
-                            rt.set_app(&current_app);
+                    match msg {
+                        Ok(ActivityEvent::AppChange(bundle_id)) => {
+                            if let Err(e) = gamacros.set_active_app(&bundle_id) {
+                                eprintln!("Failed to set active app: {e}");
+                            }
+                        }
+                        Ok(_) => {}
+                        Err(_) => {
+                            // Activity channel closed; stop the event loop to avoid spin.
+                            break;
                         }
                     }
                 }
                 recv(rx) -> msg => {
                     match msg {
                         Ok(ControllerEvent::Connected(info)) => {
-                            let runtime = build_runtime(&profile, info.vendor_id, info.product_id, &current_app);
-                            runtimes.insert(info.id, runtime);
+                            if let Err(e) = gamacros.add_device(info.id, info.vendor_id, info.product_id) {
+                                eprintln!("Failed to add device: {e}");
+                            }
                             if let Some(h) = manager.controller(info.id) {
                                 let _ = h.rumble(0.2, 0.2, Duration::from_millis(120));
                             }
                         }
                         Ok(ControllerEvent::Disconnected(id)) => {
-                            runtimes.remove(&id);
+                            if let Err(e) = gamacros.remove_device(id) {
+                                eprintln!("Failed to remove device: {e}");
+                            }
                         }
                         Ok(ControllerEvent::ButtonPressed { id, button }) => {
-                            if let std::collections::hash_map::Entry::Vacant(e) = runtimes.entry(id) {
-                                if let Some(info) = manager.controllers().into_iter().find(|i| i.id == id) {
-                                    let runtime = build_runtime(&profile, info.vendor_id, info.product_id, &current_app);
-                                e.insert(runtime);
-                                }
-                            }
-                            if let Some(rt) = runtimes.get_mut(&id) {
-                                for action in rt.on_button(button, TriggerPhase::Pressed) {
-                                    println!("dispatching action: {action:?}");
-                                    dispatch_action(&mut keypress, &manager, id, action);
-                                }
-                            }
+                            handle_button(&gamacros, &mut keypress, &manager, id, button, TriggerPhase::Pressed);
                         }
                         Ok(ControllerEvent::ButtonReleased { id, button }) => {
-                            if let std::collections::hash_map::Entry::Vacant(e) = runtimes.entry(id) {
-                                if let Some(info) = manager.controllers().into_iter().find(|i| i.id == id) {
-                                    let runtime = build_runtime(&profile, info.vendor_id, info.product_id, &current_app);
-                                e.insert(runtime);
-                                }
-                            }
-                            if let Some(rt) = runtimes.get_mut(&id) {
-                                for action in rt.on_button(button, TriggerPhase::Released) {
-                                    dispatch_action(&mut keypress, &manager, id, action);
-                                }
-                            }
+                            handle_button(&gamacros, &mut keypress, &manager, id, button, TriggerPhase::Released);
                         }
                         Err(err) => {
                             eprintln!("Event channel closed: {err}");
@@ -124,19 +111,59 @@ fn main() {
     let _ = event_loop.join();
 }
 
+fn handle_button(
+    gamacros: &Gamacros,
+    keypress: &mut Performer,
+    manager: &ControllerManager,
+    id: u32,
+    button: Button,
+    phase: TriggerPhase,
+) {
+    let actions = gamacros.handle_button(id, button, phase);
+    for action in actions {
+        dispatch_action(keypress, manager, id, action, phase);
+    }
+}
+
 fn dispatch_action(
     keypress: &mut Performer,
     manager: &ControllerManager,
     id: u32,
-    action: RuntimeAction,
+    rule: Rule,
+    phase: TriggerPhase,
 ) {
-    println!("dispatch_action: {action:?}");
-    if let Some(kc) = action.key_combo {
-        let _ = keypress.perform(&kc);
-    }
-    if let Some(ms) = action.vibrate_ms {
-        if let Some(h) = manager.controller(id) {
-            let _ = h.rumble(0.2, 0.2, Duration::from_millis(ms as u64));
+    fn vibrate(manager: &ControllerManager, id: u32, vibrate: Option<u16>) {
+        if let Some(ms) = vibrate {
+            if let Some(h) = manager.controller(id) {
+                let _ = h.rumble(0.2, 0.2, Duration::from_millis(ms as u64));
+            }
         }
+    }
+
+    match rule.action {
+        Action::Key(combo) => {
+            // vibrate before action
+            match rule.when {
+                TriggerPhase::Pressed => {
+                    match phase {
+                        TriggerPhase::Pressed => {
+                            println!("pressed");
+                            vibrate(manager, id, rule.vibrate);
+                            let _ = keypress.press(&combo);
+                        }
+                        TriggerPhase::Released => {
+                            println!("released");
+                            let _ = keypress.release(&combo);
+                        }
+                    }
+                }
+                TriggerPhase::Released => {
+                    println!("released");
+                    vibrate(manager, id, rule.vibrate);
+                    let _ = keypress.perform(&combo);
+                }
+            }
+        }
+        Action::None => {}
     }
 }

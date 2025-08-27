@@ -15,5 +15,8 @@ gamacros-controller = { workspace = true }
 gamacros-keypress = { workspace = true }
 gamacros-profile = { workspace = true }
 gamacros-activity = { workspace = true }
+gamacros-bit-mask = { workspace = true }
 ctrlc = "3.4.5"
 crossbeam-channel = "0.5"
+thiserror = { workspace = true }
+dashmap = "5"

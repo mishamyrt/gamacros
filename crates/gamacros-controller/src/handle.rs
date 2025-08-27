@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::command::Command;
-use crate::error::{Error, Result};
+use crate::{Error, Result};
 use crate::manager::Inner;
 use crate::types::ControllerId;
 

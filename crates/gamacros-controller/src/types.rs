@@ -2,7 +2,7 @@
 pub type ControllerId = u32;
 
 /// Logical controller buttons supported by this crate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, gamacros_bit_derive::Bit)]
 pub enum Button {
     A,
     B,
@@ -31,5 +31,3 @@ pub struct ControllerInfo {
     pub vendor_id: u16,
     pub product_id: u16,
 }
-
-

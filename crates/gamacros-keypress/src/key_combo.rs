@@ -3,7 +3,10 @@ use enigo::{
     Direction::{Click, Press, Release},
     Enigo, InputResult, Key, Keyboard,
 };
-use serde::{de::{value::Error as DeError, IntoDeserializer}, Deserializer};
+use serde::{
+    de::{value::Error as DeError, IntoDeserializer},
+    Deserializer,
+};
 use serde::{de::Visitor, Deserialize};
 use std::fmt;
 
@@ -18,7 +21,8 @@ pub struct KeyCombo {
 
 impl KeyCombo {
     pub fn is_illumination(&self) -> bool {
-        self.keys.len() == 1 && (self.keys[0] == ILLUMINATION_UP || self.keys[0] == ILLUMINATION_DOWN)
+        self.keys.len() == 1
+            && (self.keys[0] == ILLUMINATION_UP || self.keys[0] == ILLUMINATION_DOWN)
     }
 }
 
@@ -34,10 +38,15 @@ fn parse_key(input: &str) -> Option<Key> {
 
     match input {
         "ctrl" => Some(Key::Control),
+        "rctrl" => Some(Key::RControl),
         "meta" => Some(Key::Meta),
+        "rmeta" => Some(Key::RCommand),
         "cmd" => Some(Key::Meta),
+        "rcmd" => Some(Key::RCommand),
         "command" => Some(Key::Meta),
+        "rcommand" => Some(Key::RCommand),
         "super" => Some(Key::Meta),
+        "rsuper" => Some(Key::RCommand),
         "shift" => Some(Key::Shift),
         "alt" => Some(Key::Alt),
         "option" => Some(Key::Alt),
@@ -69,6 +78,39 @@ fn parse_key(input: &str) -> Option<Key> {
 
         "illumination_up" => Some(Key::IlluminationUp),
         "illumination_down" => Some(Key::IlluminationDown),
+
+        "'" | "quote" | "apostrophe" => Some(Key::Other(0x27)),
+        ";" | "semicolon" => Some(Key::Other(0x29)),
+        "\\" | "backslash" => Some(Key::Other(0x2A)),
+        "`" | "grave" | "backtick" | "tilde" => Some(Key::Other(0x32)),
+        // Provide ANSI letter scancode aliases to avoid single-char Unicode path
+        "ansi_k" => Some(Key::Other(0x28)),
+        "ansi_n" => Some(Key::Other(0x2D)),
+        "ansi_m" => Some(Key::Other(0x2E)),
+        // Keypad (numpad) keys
+        "kp_decimal" | "keypad_decimal" => Some(Key::Other(0x41)),
+        "kp_multiply" | "keypad_multiply" => Some(Key::Other(0x43)),
+        "kp_plus" | "keypad_plus" => Some(Key::Other(0x45)),
+        "kp_clear" | "keypad_clear" => Some(Key::Other(0x47)),
+        "kp_divide" | "keypad_divide" => Some(Key::Other(0x4B)),
+        "kp_enter" | "keypad_enter" => Some(Key::Other(0x4C)),
+        "kp_minus" | "keypad_minus" => Some(Key::Other(0x4E)),
+        "kp_equals" | "keypad_equals" => Some(Key::Other(0x51)),
+        "kp_0" | "keypad_0" => Some(Key::Other(0x52)),
+        "kp_1" | "keypad_1" => Some(Key::Other(0x53)),
+        "kp_2" | "keypad_2" => Some(Key::Other(0x54)),
+        "kp_3" | "keypad_3" => Some(Key::Other(0x55)),
+        "kp_4" | "keypad_4" => Some(Key::Other(0x56)),
+        "kp_5" | "keypad_5" => Some(Key::Other(0x57)),
+        "kp_6" | "keypad_6" => Some(Key::Other(0x58)),
+        "kp_7" | "keypad_7" => Some(Key::Other(0x59)),
+        "kp_8" | "keypad_8" => Some(Key::Other(0x5B)),
+        "kp_9" | "keypad_9" => Some(Key::Other(0x5C)),
+        "." | "period" | "dot" => Some(Key::Other(0x2f)),
+        "," | "comma" => Some(Key::Other(0x2b)),
+        "/" | "slash" => Some(Key::Other(0x2c)),
+        "-" | "minus" => Some(Key::Other(0x1b)),
+        "=" | "equal" => Some(Key::Other(0x18)),
 
         "f1" => Some(Key::F1),
         "f2" => Some(Key::F2),
@@ -103,8 +145,6 @@ impl<'de> Deserialize<'de> for KeyCombo {
 
         impl Visitor<'_> for KeyComboVisitor {
             type Value = KeyCombo;
-
-
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str("key combination string")
@@ -220,7 +260,8 @@ impl std::str::FromStr for KeyCombo {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        KeyCombo::deserialize(s.into_deserializer()).map_err(|e: DeError| e.to_string())
+        KeyCombo::deserialize(s.into_deserializer())
+            .map_err(|e: DeError| e.to_string())
     }
 }
 
@@ -231,7 +272,8 @@ mod tests {
     use serde::de::IntoDeserializer;
 
     fn parse(input: &str) -> Result<KeyCombo, String> {
-        KeyCombo::deserialize(input.into_deserializer()).map_err(|e: DeError| e.to_string())
+        KeyCombo::deserialize(input.into_deserializer())
+            .map_err(|e: DeError| e.to_string())
     }
 
     #[test]
@@ -280,5 +322,4 @@ mod tests {
         assert_eq!(kc.keys.len(), 1);
         assert_eq!(kc.keys[0], Key::Unicode('a'));
     }
-
 }

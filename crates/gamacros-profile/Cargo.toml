@@ -16,4 +16,4 @@ serde_yaml = { workspace = true }
 thiserror = { workspace = true }
 gamacros-keypress = { workspace = true }
 gamacros-controller = { workspace = true }
-
+gamacros-bit-mask = { workspace = true }

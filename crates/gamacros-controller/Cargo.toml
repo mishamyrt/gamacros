@@ -18,3 +18,5 @@ sdl2-backend = []
 thiserror = { workspace = true }
 sdl2 = { version = "0.37", features = ["bundled", "static-link"], optional = false }
 crossbeam-channel = "0.5"
+gamacros-bit-derive = { workspace = true }
+gamacros-bit-mask = { workspace = true }

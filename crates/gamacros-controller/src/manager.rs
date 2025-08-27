@@ -5,7 +5,7 @@ use std::time::Duration;
 use crossbeam_channel::{unbounded, Sender};
 
 use crate::command::Command;
-use crate::error::Result;
+use crate::Result;
 use crate::events::{ControllerEvent, EventReceiver};
 use crate::handle::ControllerHandle;
 use crate::runtime::start_runtime_thread;
