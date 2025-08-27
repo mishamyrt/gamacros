@@ -1,13 +1,35 @@
 mod gamacros;
+mod logging;
+
+use std::{time::Duration, fs};
+
+use colored::Colorize;
+use crossbeam_channel::{select, unbounded};
+use fern::{Dispatch};
 
 use gamacros_controller::{Button, ControllerEvent, ControllerManager};
 use gamacros_keypress::Performer;
 use gamacros_profile::{parse_profile, Action, Rule, Profile, TriggerPhase};
 use gamacros_activity::{Monitor, Event as ActivityEvent, request_stop};
-use std::{time::Duration, fs};
-use crossbeam_channel::{select, unbounded};
 
 use crate::{gamacros::Gamacros};
+
+fn setup_logging(verbose: bool, no_color: bool) {
+    let log_level = if verbose {
+        log::LevelFilter::Debug
+    } else {
+        log::LevelFilter::Info
+    };
+    Dispatch::new()
+        .level(log_level)
+        .chain(std::io::stdout())
+        .apply()
+        .expect("Unable to set up logger");
+
+    if no_color {
+        colored::control::set_override(false);
+    }
+}
 
 fn load_profile() -> Profile {
     let profile_path = std::env::current_dir()
@@ -19,6 +41,8 @@ fn load_profile() -> Profile {
 }
 
 fn main() {
+    setup_logging(false, false);
+
     // Handle Ctrl+C to exit cleanly
     let (stop_tx, stop_rx) = unbounded::<()>();
     ctrlc::set_handler(move || {
@@ -48,16 +72,9 @@ fn main() {
         // TODO: add file watch and hot-reload.
         let profile = load_profile();
         let gamacros = Gamacros::new(profile);
-
-        for info in manager.controllers() {
-            if let Err(e) =
-                gamacros.add_device(info.id, info.vendor_id, info.product_id)
-            {
-                eprintln!("Failed to add device: {e}");
-            }
-        }
-
-        println!("gamacrosd started. Listening for controller and activity events.");
+        print_info!(
+            "gamacrosd started. Listening for controller and activity events."
+        );
         loop {
             select! {
                 recv(stop_rx) -> _ => {
@@ -67,7 +84,8 @@ fn main() {
                     match msg {
                         Ok(ActivityEvent::AppChange(bundle_id)) => {
                             if let Err(e) = gamacros.set_active_app(&bundle_id) {
-                                eprintln!("Failed to set active app: {e}");
+                                print_error!("failed to set active app: {e}");
+                                break;
                             }
                         }
                         Ok(_) => {}
@@ -80,16 +98,19 @@ fn main() {
                 recv(rx) -> msg => {
                     match msg {
                         Ok(ControllerEvent::Connected(info)) => {
-                            if let Err(e) = gamacros.add_device(info.id, info.vendor_id, info.product_id) {
-                                eprintln!("Failed to add device: {e}");
+                            let id = info.id;
+                            if gamacros.is_known(id) {
+                                continue;
                             }
-                            if let Some(h) = manager.controller(info.id) {
-                                let _ = h.rumble(0.2, 0.2, Duration::from_millis(120));
+
+                            if let Err(e) = gamacros.add_controller(info) {
+                                print_error!("failed to add controller: {e}");
                             }
                         }
                         Ok(ControllerEvent::Disconnected(id)) => {
-                            if let Err(e) = gamacros.remove_device(id) {
-                                eprintln!("Failed to remove device: {e}");
+                            if let Err(e) = gamacros.remove_controller(id) {
+                                print_error!("failed to remove device: {e}");
+                                break;
                             }
                         }
                         Ok(ControllerEvent::ButtonPressed { id, button }) => {
@@ -99,7 +120,7 @@ fn main() {
                             handle_button(&gamacros, &mut keypress, &manager, id, button, TriggerPhase::Released);
                         }
                         Err(err) => {
-                            eprintln!("Event channel closed: {err}");
+                            print_error!("event channel closed: {err}");
                             break;
                         }
                     }
@@ -123,18 +144,27 @@ fn handle_button(
 ) {
     let actions = gamacros.handle_button(id, button, phase);
     for action in actions {
-        dispatch_action(keypress, manager, id, action, phase);
+        dispatch_action(gamacros, keypress, manager, id, action, phase);
     }
 }
 
 fn dispatch_action(
+    gamacros: &Gamacros,
     keypress: &mut Performer,
     manager: &ControllerManager,
     id: u32,
     rule: Rule,
     phase: TriggerPhase,
 ) {
-    fn vibrate(manager: &ControllerManager, id: u32, vibrate: Option<u16>) {
+    fn vibrate(
+        manager: &ControllerManager,
+        id: u32,
+        vibrate: Option<u16>,
+        supports_rumble: bool,
+    ) {
+        if !supports_rumble {
+            return;
+        }
         if let Some(ms) = vibrate {
             if let Some(h) = manager.controller(id) {
                 let _ = h.rumble(0.2, 0.2, Duration::from_millis(ms as u64));
@@ -142,24 +172,23 @@ fn dispatch_action(
         }
     }
 
+    let supports_rumble = gamacros.supports_rumble(id);
+
     match rule.action {
         Action::Key(combo) => {
             // vibrate before action
             match rule.when {
                 TriggerPhase::Pressed => match phase {
                     TriggerPhase::Pressed => {
-                        println!("pressed");
-                        vibrate(manager, id, rule.vibrate);
+                        vibrate(manager, id, rule.vibrate, supports_rumble);
                         let _ = keypress.press(&combo);
                     }
                     TriggerPhase::Released => {
-                        println!("released");
                         let _ = keypress.release(&combo);
                     }
                 },
                 TriggerPhase::Released => {
-                    println!("released");
-                    vibrate(manager, id, rule.vibrate);
+                    vibrate(manager, id, rule.vibrate, supports_rumble);
                     let _ = keypress.perform(&combo);
                 }
             }

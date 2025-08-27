@@ -28,6 +28,7 @@ pub enum Button {
 pub struct ControllerInfo {
     pub id: ControllerId,
     pub name: String,
+    pub supports_rumble: bool,
     pub vendor_id: u16,
     pub product_id: u16,
 }

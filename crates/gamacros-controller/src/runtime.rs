@@ -55,12 +55,16 @@ pub(crate) fn start_runtime_thread(
             for i in 0..num_joysticks {
                 if controller_subsystem.is_game_controller(i) {
                     if let Ok(controller) = controller_subsystem.open(i) {
-                        let id: ControllerId = i as ControllerId;
+                        let id: ControllerId = match joystick_subsystem.open(i) {
+                            Ok(js) => js.instance_id() as ControllerId,
+                            Err(_) => i as ControllerId,
+                        };
                         let info = ControllerInfo {
                             id,
                             name: controller.name().to_string(),
                             vendor_id: controller.vendor_id().unwrap_or(0),
                             product_id: controller.product_id().unwrap_or(0),
+                            supports_rumble: controller.has_rumble(),
                         };
                         controllers.insert(id, controller);
                         if let Ok(mut map) = inner.controllers_info.write() {
@@ -69,7 +73,7 @@ pub(crate) fn start_runtime_thread(
                         broadcast(&inner, ControllerEvent::Connected(info));
                     }
                 } else if let Ok(joystick) = joystick_subsystem.open(i) {
-                    let id: ControllerId = i as ControllerId;
+                    let id: ControllerId = joystick.instance_id() as ControllerId;
                     if joystick.has_rumble() {
                         if let Ok(h) = haptic_subsystem
                             .open_from_joystick_id(joystick.instance_id())
@@ -82,6 +86,7 @@ pub(crate) fn start_runtime_thread(
                         name: joystick.name().to_string(),
                         vendor_id: 0,
                         product_id: 0,
+                        supports_rumble: joystick.has_rumble(),
                     };
                     joysticks.insert(id, joystick);
                     if let Ok(mut map) = inner.controllers_info.write() {
@@ -102,12 +107,17 @@ pub(crate) fn start_runtime_thread(
                 match event {
                     Event::ControllerDeviceAdded { which, .. } => {
                         if let Ok(controller) = controller_subsystem.open(which) {
-                            let id: ControllerId = which as ControllerId;
+                            let id: ControllerId =
+                                match joystick_subsystem.open(which) {
+                                    Ok(js) => js.instance_id() as ControllerId,
+                                    Err(_) => which as ControllerId,
+                                };
                             let info = ControllerInfo {
                                 id,
                                 name: controller.name().to_string(),
                                 vendor_id: controller.vendor_id().unwrap_or(0),
                                 product_id: controller.product_id().unwrap_or(0),
+                                supports_rumble: controller.has_rumble(),
                             };
                             controllers.insert(id, controller);
                             if let Ok(mut map) = inner.controllers_info.write() {
@@ -214,6 +224,7 @@ pub(crate) fn start_runtime_thread(
                     Command::Rumble { id, low, high, ms } => {
                         if let Some(ctrl) = controllers.get_mut(&id) {
                             if let Err(e) = ctrl.set_rumble(low, high, ms) {
+                                println!("{}", ctrl.has_rumble());
                                 eprintln!("Failed to set rumble: {e}");
                             }
                         } else if let Some(h) = haptics.get_mut(&id) {
