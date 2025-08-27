@@ -123,9 +123,7 @@ fn parse_rule(raw: ProfileV1Rule) -> Result<Rule, ProfileError> {
 
 fn parse_action(val: serde_yaml::Value) -> Result<Action, ProfileError> {
     if let Some(s) = val.as_str() {
-        let kc = s
-            .parse::<KeyCombo>()
-            .map_err(ProfileError::KeyParseError)?;
+        let kc = s.parse::<KeyCombo>().map_err(ProfileError::KeyParseError)?;
         return Ok(Action::Key(kc));
     }
     Err(ProfileError::InvalidTrigger("invalid action".into()))
@@ -156,8 +154,12 @@ fn parse_button_name(name: &str) -> Result<Button, ProfileError> {
         "start" => Button::Start,
         "ls" | "leftstick" | "left_stick" => Button::LeftStick,
         "rs" | "rightstick" | "right_stick" => Button::RightStick,
-        "lb" | "left_bump" | "leftshoulder"  | "left_shoulder" | "l1" => Button::LeftShoulder,
-        "rb" | "right_bump" | "rightshoulder" | "right_shoulder" | "r1" => Button::RightShoulder,
+        "lb" | "left_bump" | "leftshoulder" | "left_shoulder" | "l1" => {
+            Button::LeftShoulder
+        }
+        "rb" | "right_bump" | "rightshoulder" | "right_shoulder" | "r1" => {
+            Button::RightShoulder
+        }
         "lt" | "lefttrigger" | "left_trigger" | "l2" => Button::LeftTrigger,
         "rt" | "righttrigger" | "right_trigger" | "r2" => Button::RightTrigger,
         "dpad_up" | "dpadup" | "up" => Button::DPadUp,

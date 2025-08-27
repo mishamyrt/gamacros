@@ -22,13 +22,23 @@ impl ControllerHandle {
     /// Triggers the controller rumble, if supported by the device.
     /// - `low_freq` and `high_freq` are normalized in [0.0, 1.0]
     /// - `duration` specifies how long the rumble should play
-    pub fn rumble(&self, low_freq: f32, high_freq: f32, duration: Duration) -> Result<()> {
+    pub fn rumble(
+        &self,
+        low_freq: f32,
+        high_freq: f32,
+        duration: Duration,
+    ) -> Result<()> {
         let low = (low_freq.clamp(0.0, 1.0) * 65535.0).round() as u16;
         let high = (high_freq.clamp(0.0, 1.0) * 65535.0).round() as u16;
         let ms = duration.as_millis().min(u32::MAX as u128) as u32;
         self.inner
             .cmd_tx
-            .send(Command::Rumble { id: self.id, low, high, ms })
+            .send(Command::Rumble {
+                id: self.id,
+                low,
+                high,
+                ms,
+            })
             .map_err(|e| Error::Backend(format!("{e}")))
     }
 
@@ -40,5 +50,3 @@ impl ControllerHandle {
             .map_err(|e| Error::Backend(format!("{e}")))
     }
 }
-
-

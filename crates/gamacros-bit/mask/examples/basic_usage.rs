@@ -45,8 +45,16 @@ fn main() {
     println!("Updated permissions: {updated_perms:?}");
 
     // Check if file permissions are subset of admin permissions
-    let admin_perms = Bitmask::new(&[Permission::Read, Permission::Write, Permission::Execute, Permission::Delete]);
-    println!("File perms is subset of admin: {}", updated_perms.is_subset(&admin_perms));
+    let admin_perms = Bitmask::new(&[
+        Permission::Read,
+        Permission::Write,
+        Permission::Execute,
+        Permission::Delete,
+    ]);
+    println!(
+        "File perms is subset of admin: {}",
+        updated_perms.is_subset(&admin_perms)
+    );
 
     // Remove write permission
     updated_perms.remove(Permission::Write);

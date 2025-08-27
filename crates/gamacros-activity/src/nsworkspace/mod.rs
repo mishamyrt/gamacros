@@ -30,7 +30,9 @@ use crate::Event;
 // Request the NSApplication run loop to stop on the next iteration.
 // Safe to call from any thread; it dispatches onto the main queue.
 pub fn request_stop() {
-    unsafe { request_stop_impl(); }
+    unsafe {
+        request_stop_impl();
+    }
 }
 
 #[allow(improper_ctypes, unexpected_cfgs)]

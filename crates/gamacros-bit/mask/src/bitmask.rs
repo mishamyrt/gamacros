@@ -170,6 +170,4 @@ mod tests {
         assert!(!ab.is_subset(&a));
         assert!(!a.is_subset(&b));
     }
-
-    
 }

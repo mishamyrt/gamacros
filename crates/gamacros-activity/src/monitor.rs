@@ -7,7 +7,7 @@ use crate::nsworkspace::{start_nsworkspace_listener, NSWorkspaceError};
 pub enum Event {
     AppChange(String),
     AudioOutputChange(String),
-    AudioInputChange(String)
+    AudioInputChange(String),
 }
 
 /// A monitor for system events.

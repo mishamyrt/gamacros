@@ -17,5 +17,3 @@ pub enum ControllerEvent {
 
 /// Receiving end for controller events subscription.
 pub type EventReceiver = Receiver<ControllerEvent>;
-
-

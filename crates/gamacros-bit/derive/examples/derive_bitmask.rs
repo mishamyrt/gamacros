@@ -14,5 +14,3 @@ fn main() {
     assert_eq!(Button::X.bit(), 1u64 << 2);
     assert_eq!(Button::Y.bit(), 1u64 << 3);
 }
-
-

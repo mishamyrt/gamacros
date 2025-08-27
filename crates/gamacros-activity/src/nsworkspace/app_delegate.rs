@@ -20,10 +20,13 @@ pub(crate) struct AppDelegate {
 
 #[allow(improper_ctypes, unexpected_cfgs)]
 impl AppDelegate {
-    pub(crate) fn new(event_tx: mpsc::Sender<Event>) -> Result<Self, NSWorkspaceError> {
+    pub(crate) fn new(
+        event_tx: mpsc::Sender<Event>,
+    ) -> Result<Self, NSWorkspaceError> {
         unsafe {
             let mut decl =
-                objc::declare::ClassDecl::new("RustAppDelegate", class!(NSObject)).unwrap();
+                objc::declare::ClassDecl::new("RustAppDelegate", class!(NSObject))
+                    .unwrap();
 
             decl.add_ivar::<*mut c_void>("_rustState");
 
@@ -58,7 +61,9 @@ impl AppDelegate {
             let state = &*(state_ptr as *const AppState);
             state.setup_notifications(delegate)?;
 
-            Ok(AppDelegate { _delegate: delegate })
+            Ok(AppDelegate {
+                _delegate: delegate,
+            })
         }
     }
 

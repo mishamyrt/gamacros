@@ -18,7 +18,10 @@ impl AppState {
         AppState { event_tx }
     }
 
-    pub(crate) fn notify_active_app(&self, notification: id) -> Result<(), NSWorkspaceError> {
+    pub(crate) fn notify_active_app(
+        &self,
+        notification: id,
+    ) -> Result<(), NSWorkspaceError> {
         unsafe {
             let user_info: id = msg_send![notification, userInfo];
             if user_info.is_null() {
@@ -56,7 +59,10 @@ impl AppState {
         }
     }
 
-    pub(crate) fn setup_notifications(&self, delegate: id) -> Result<(), NSWorkspaceError> {
+    pub(crate) fn setup_notifications(
+        &self,
+        delegate: id,
+    ) -> Result<(), NSWorkspaceError> {
         unsafe {
             let workspace: id = msg_send![class!(NSWorkspace), sharedWorkspace];
             let frontmost_app: id = msg_send![workspace, frontmostApplication];
@@ -67,8 +73,9 @@ impl AppState {
                     if !utf8.is_null() {
                         let cstr = std::ffi::CStr::from_ptr(utf8);
                         if let Ok(bundle_str) = cstr.to_str() {
-                            if let Err(e) =
-                                self.event_tx.send(Event::AppChange(bundle_str.to_string()))
+                            if let Err(e) = self
+                                .event_tx
+                                .send(Event::AppChange(bundle_str.to_string()))
                             {
                                 return Err(NSWorkspaceError::SendEventError(e));
                             }
@@ -77,8 +84,10 @@ impl AppState {
                 }
             }
 
-            let workspace_notification_center: id = msg_send![workspace, notificationCenter];
-            let app_active = make_nsstring("NSWorkspaceDidActivateApplicationNotification");
+            let workspace_notification_center: id =
+                msg_send![workspace, notificationCenter];
+            let app_active =
+                make_nsstring("NSWorkspaceDidActivateApplicationNotification");
 
             let _: () = msg_send![workspace_notification_center,
                 addObserver:delegate

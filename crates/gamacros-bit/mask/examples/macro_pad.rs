@@ -38,10 +38,7 @@ impl MacroAction {
 fn main() {
     // Define some macro actions
     let macros = vec![
-        MacroAction::new(
-            "Copy",
-            &[MacroButton::ModifierCtrl, MacroButton::Button1],
-        ),
+        MacroAction::new("Copy", &[MacroButton::ModifierCtrl, MacroButton::Button1]),
         MacroAction::new(
             "Paste",
             &[MacroButton::ModifierCtrl, MacroButton::Button2],
@@ -50,13 +47,14 @@ fn main() {
             "Select All",
             &[MacroButton::ModifierCtrl, MacroButton::Button3],
         ),
-        MacroAction::new(
-            "Save",
-            &[MacroButton::ModifierCtrl, MacroButton::Button4],
-        ),
+        MacroAction::new("Save", &[MacroButton::ModifierCtrl, MacroButton::Button4]),
         MacroAction::new(
             "New Tab",
-            &[MacroButton::ModifierCtrl, MacroButton::ModifierShift, MacroButton::Button5],
+            &[
+                MacroButton::ModifierCtrl,
+                MacroButton::ModifierShift,
+                MacroButton::Button5,
+            ],
         ),
     ];
 
@@ -68,12 +66,38 @@ fn main() {
     // Simulate various button combinations
     let scenarios = vec![
         ("Single button", vec![MacroButton::Button1]),
-        ("Ctrl+C", vec![MacroButton::ModifierCtrl, MacroButton::Button1]),
-        ("Ctrl+V", vec![MacroButton::ModifierCtrl, MacroButton::Button2]),
-        ("Ctrl+A", vec![MacroButton::ModifierCtrl, MacroButton::Button3]),
-        ("Ctrl+S", vec![MacroButton::ModifierCtrl, MacroButton::Button4]),
-        ("Ctrl+Shift+T", vec![MacroButton::ModifierCtrl, MacroButton::ModifierShift, MacroButton::Button5]),
-        ("Random combo", vec![MacroButton::Button1, MacroButton::Button3, MacroButton::ModifierAlt]),
+        (
+            "Ctrl+C",
+            vec![MacroButton::ModifierCtrl, MacroButton::Button1],
+        ),
+        (
+            "Ctrl+V",
+            vec![MacroButton::ModifierCtrl, MacroButton::Button2],
+        ),
+        (
+            "Ctrl+A",
+            vec![MacroButton::ModifierCtrl, MacroButton::Button3],
+        ),
+        (
+            "Ctrl+S",
+            vec![MacroButton::ModifierCtrl, MacroButton::Button4],
+        ),
+        (
+            "Ctrl+Shift+T",
+            vec![
+                MacroButton::ModifierCtrl,
+                MacroButton::ModifierShift,
+                MacroButton::Button5,
+            ],
+        ),
+        (
+            "Random combo",
+            vec![
+                MacroButton::Button1,
+                MacroButton::Button3,
+                MacroButton::ModifierAlt,
+            ],
+        ),
     ];
 
     for (scenario_name, button_combo) in scenarios {
@@ -111,19 +135,38 @@ fn main() {
 
     // Demonstrate subset checking
     println!("=== Subset Analysis ===");
-    let ctrl_combo = Bitmask::new(&[MacroButton::ModifierCtrl, MacroButton::Button1]);
-    let full_combo = Bitmask::new(&[MacroButton::ModifierCtrl, MacroButton::Button1, MacroButton::ModifierAlt]);
+    let ctrl_combo =
+        Bitmask::new(&[MacroButton::ModifierCtrl, MacroButton::Button1]);
+    let full_combo = Bitmask::new(&[
+        MacroButton::ModifierCtrl,
+        MacroButton::Button1,
+        MacroButton::ModifierAlt,
+    ]);
 
     println!("Ctrl+C combo: {ctrl_combo:?}");
     println!("Full combo: {full_combo:?}");
-    println!("Ctrl+C is subset of full: {}", ctrl_combo.is_subset(&full_combo));
-    println!("Full is subset of Ctrl+C: {}", full_combo.is_subset(&ctrl_combo));
+    println!(
+        "Ctrl+C is subset of full: {}",
+        ctrl_combo.is_subset(&full_combo)
+    );
+    println!(
+        "Full is subset of Ctrl+C: {}",
+        full_combo.is_subset(&ctrl_combo)
+    );
 
     // Show bit representations
     println!("\n=== Bit Representations ===");
     for button in [
-        MacroButton::Button1, MacroButton::ModifierCtrl, MacroButton::Button5, MacroButton::ModifierShift
+        MacroButton::Button1,
+        MacroButton::ModifierCtrl,
+        MacroButton::Button5,
+        MacroButton::ModifierShift,
     ] {
-        println!("{:?}: bit={:#b}, index={}", button, button.bit(), button.index());
+        println!(
+            "{:?}: bit={:#b}, index={}",
+            button,
+            button.bit(),
+            button.index()
+        );
     }
 }

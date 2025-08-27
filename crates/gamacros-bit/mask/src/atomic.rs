@@ -1,4 +1,7 @@
-use std::{marker::PhantomData, sync::atomic::{AtomicU64, Ordering}};
+use std::{
+    marker::PhantomData,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use crate::{Bitable};
 use crate::bitmask::Bitmask;

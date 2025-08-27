@@ -50,7 +50,9 @@ fn main() {
         let gamacros = Gamacros::new(profile);
 
         for info in manager.controllers() {
-            if let Err(e) = gamacros.add_device(info.id, info.vendor_id, info.product_id) {
+            if let Err(e) =
+                gamacros.add_device(info.id, info.vendor_id, info.product_id)
+            {
                 eprintln!("Failed to add device: {e}");
             }
         }
@@ -144,19 +146,17 @@ fn dispatch_action(
         Action::Key(combo) => {
             // vibrate before action
             match rule.when {
-                TriggerPhase::Pressed => {
-                    match phase {
-                        TriggerPhase::Pressed => {
-                            println!("pressed");
-                            vibrate(manager, id, rule.vibrate);
-                            let _ = keypress.press(&combo);
-                        }
-                        TriggerPhase::Released => {
-                            println!("released");
-                            let _ = keypress.release(&combo);
-                        }
+                TriggerPhase::Pressed => match phase {
+                    TriggerPhase::Pressed => {
+                        println!("pressed");
+                        vibrate(manager, id, rule.vibrate);
+                        let _ = keypress.press(&combo);
                     }
-                }
+                    TriggerPhase::Released => {
+                        println!("released");
+                        let _ = keypress.release(&combo);
+                    }
+                },
                 TriggerPhase::Released => {
                     println!("released");
                     vibrate(manager, id, rule.vibrate);

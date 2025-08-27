@@ -28,14 +28,26 @@ fn main() {
 
     // Check if combo is subset of full controller state
     let full_controller = Bitmask::new(&[
-        GameButton::A, GameButton::B, GameButton::X, GameButton::Y,
-        GameButton::Start, GameButton::Select
+        GameButton::A,
+        GameButton::B,
+        GameButton::X,
+        GameButton::Y,
+        GameButton::Start,
+        GameButton::Select,
     ]);
-    println!("Combo is subset of full controller: {}", paused.is_subset(&full_controller));
+    println!(
+        "Combo is subset of full controller: {}",
+        paused.is_subset(&full_controller)
+    );
 
     // Demonstrate bit values
     println!("Button bit values:");
     for button in [GameButton::A, GameButton::B, GameButton::X, GameButton::Y] {
-        println!("  {:?}: bit={}, index={}", button, button.bit(), button.index());
+        println!(
+            "  {:?}: bit={}, index={}",
+            button,
+            button.bit(),
+            button.index()
+        );
     }
 }
