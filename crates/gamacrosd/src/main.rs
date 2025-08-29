@@ -1,18 +1,27 @@
 mod gamacros;
 mod logging;
+mod stick;
+// mod axis_bus;
 
 use std::{time::Duration, fs};
 
 use colored::Colorize;
 use crossbeam_channel::{select, unbounded};
+use enigo::Key;
 use fern::{Dispatch};
 
-use gamacros_controller::{Button, ControllerEvent, ControllerManager};
-use gamacros_keypress::Performer;
-use gamacros_profile::{parse_profile, Action, Rule, Profile, TriggerPhase};
+use gamacros_controller::{ControllerEvent, ControllerManager, Axis};
+use gamacros_keypress::{KeyCombo, Performer};
+use gamacros_profile::{
+    parse_profile, ArrowsParams, ButtonPhase, ButtonRule, MouseParams, Profile,
+    ScrollParams, StepperParams, StickMode, StickSide, Axis as ProfileAxis,
+};
 use gamacros_activity::{Monitor, Event as ActivityEvent, request_stop};
 
-use crate::{gamacros::Gamacros};
+use crate::{
+    gamacros::Gamacros,
+    stick::{Direction, StickEngine},
+};
 
 fn setup_logging(verbose: bool, no_color: bool) {
     let log_level = if verbose {
@@ -68,6 +77,8 @@ fn main() {
             ControllerManager::new().expect("failed to start controller manager");
         let rx = manager.subscribe();
         let mut keypress = Performer::new().expect("failed to start keypress");
+        let mut stick_engine = StickEngine::new();
+        let ticker = crossbeam_channel::tick(Duration::from_millis(10));
 
         // TODO: add file watch and hot-reload.
         let profile = load_profile();
@@ -87,6 +98,10 @@ fn main() {
                                 print_error!("failed to set active app: {e}");
                                 break;
                             }
+                            // Invalidate stick state on app change to avoid stuck repeats
+                            stick_engine.last_step.clear();
+                            // Release any held arrows across all controllers on app change
+                            stick_engine.release_all_arrows();
                         }
                         Ok(_) => {}
                         Err(_) => {
@@ -112,17 +127,83 @@ fn main() {
                                 print_error!("failed to remove device: {e}");
                                 break;
                             }
+                            // Release internal state for this controller
+                            stick_engine.release_all_for(id);
                         }
                         Ok(ControllerEvent::ButtonPressed { id, button }) => {
-                            handle_button(&gamacros, &mut keypress, &manager, id, button, TriggerPhase::Pressed);
+                            let phase = ButtonPhase::Pressed;
+                            let actions = gamacros.handle_button(id, button, phase);
+                            for action in actions {
+                                dispatch_button_action(&gamacros, &mut keypress, &manager, id, action, phase);
+                            }
                         }
                         Ok(ControllerEvent::ButtonReleased { id, button }) => {
-                            handle_button(&gamacros, &mut keypress, &manager, id, button, TriggerPhase::Released);
+                            let phase = ButtonPhase::Released;
+                            let actions = gamacros.handle_button(id, button, phase);
+                            for action in actions {
+                                dispatch_button_action(&gamacros, &mut keypress, &manager, id, action, phase);
+                            }
+                        }
+                        Ok(ControllerEvent::AxisMotion { id, axis, value }) => {
+                            stick_engine.update_axis(id, axis, value);
                         }
                         Err(err) => {
                             print_error!("event channel closed: {err}");
                             break;
                         }
+                    }
+                }
+                recv(ticker) -> _ => {
+                    let Some(bindings) = gamacros.get_stick_bindings() else {
+                        continue;
+                    };
+
+                    // Group bindings by mode to avoid duplicate processing
+                    let mut arrow_bindings: Vec<(&StickSide, &ArrowsParams)> = Vec::new();
+                    let mut volume_bindings: Vec<(&StickSide, &StepperParams)> = Vec::new();
+                    let mut brightness_bindings: Vec<(&StickSide, &StepperParams)> = Vec::new();
+                    let mut mouse_bindings: Vec<(&StickSide, &MouseParams)> = Vec::new();
+                    let mut scroll_bindings: Vec<(&StickSide, &ScrollParams)> = Vec::new();
+                    for (side, mode) in bindings.iter() {
+                        match mode {
+                            StickMode::Arrows(params) => arrow_bindings.push((side, params)),
+                            StickMode::Volume(params) => volume_bindings.push((side, params)),
+                            StickMode::Brightness(params) => brightness_bindings.push((side, params)),
+                            StickMode::MouseMove(params) => mouse_bindings.push((side, params)),
+                            StickMode::Scroll(params) => scroll_bindings.push((side, params)),
+                        }
+                    }
+
+
+                    // Process arrows once per tick
+                    if !arrow_bindings.is_empty() {
+                        process_arrows(&mut keypress, &stick_engine, &arrow_bindings);
+                    }
+
+                    // Process volume per controller
+                    for (side, params) in volume_bindings.iter() {
+                        for entry in stick_engine.axes.iter() {
+                            let cid = *entry.key();
+                            process_stepper(&mut keypress, &stick_engine, cid, side, params, KeyCombo::from_key(Key::VolumeUp), KeyCombo::from_key(Key::VolumeDown));
+                        }
+                    }
+
+                    // Process brightness per controller
+                    for (side, params) in brightness_bindings.iter() {
+                        for entry in stick_engine.axes.iter() {
+                            let cid = *entry.key();
+                            process_stepper(&mut keypress, &stick_engine, cid, side, params, KeyCombo::from_key(Key::BrightnessUp), KeyCombo::from_key(Key::BrightnessDown));
+                        }
+                    }
+
+                    // Process mouse move
+                    for binding in mouse_bindings.iter() {
+                        process_mouse_move(&mut keypress, &stick_engine, binding);
+                    }
+
+                    // Process scroll with accumulator to avoid bounce
+                    for binding in scroll_bindings.iter() {
+                        process_scroll(&mut keypress, &stick_engine, binding);
                     }
                 }
             }
@@ -134,27 +215,289 @@ fn main() {
     let _ = event_loop.join();
 }
 
-fn handle_button(
-    gamacros: &Gamacros,
+fn process_mouse_move(
     keypress: &mut Performer,
-    manager: &ControllerManager,
-    id: u32,
-    button: Button,
-    phase: TriggerPhase,
+    engine: &StickEngine,
+    binding: &(&StickSide, &MouseParams),
 ) {
-    let actions = gamacros.handle_button(id, button, phase);
-    for action in actions {
-        dispatch_action(gamacros, keypress, manager, id, action, phase);
+    let (side, params) = binding;
+    for entry in engine.axes.iter() {
+        let axes = *entry.value();
+        let (mut x, mut y) = match side {
+            StickSide::Left => (
+                axes[StickEngine::axis_index(Axis::LeftX)],
+                axes[StickEngine::axis_index(Axis::LeftY)],
+            ),
+            StickSide::Right => (
+                axes[StickEngine::axis_index(Axis::RightX)],
+                axes[StickEngine::axis_index(Axis::RightY)],
+            ),
+        };
+        if params.invert_x {
+            x = -x;
+        }
+        if params.invert_y {
+            y = -y;
+        }
+        let mag_raw = (x * x + y * y).sqrt();
+        if mag_raw < params.deadzone {
+            continue;
+        }
+        // normalize after deadzone to avoid drift
+        let mag = ((mag_raw - params.deadzone) / (1.0 - params.deadzone))
+            .clamp(0.0, 1.0)
+            .powf(params.gamma.max(0.1));
+        if mag <= 0.0 {
+            continue;
+        }
+        let dir_x = x / mag_raw;
+        let dir_y = y / mag_raw;
+        let speed_px_s = params.max_speed_px_s * mag;
+        let dt_s = 0.010; // 10ms ticker
+        let dx = (speed_px_s * dir_x * dt_s).round() as i32;
+        let dy = (speed_px_s * dir_y * dt_s).round() as i32;
+        if dx != 0 || dy != 0 {
+            let _ = keypress.mouse_move(dx, dy);
+        }
     }
 }
 
-fn dispatch_action(
+fn process_scroll(
+    keypress: &mut Performer,
+    engine: &StickEngine,
+    binding: &(&StickSide, &ScrollParams),
+) {
+    let (side, params) = binding;
+    for entry in engine.axes.iter() {
+        let cid = *entry.key();
+        let axes = *entry.value();
+        let (mut x, mut y) = match side {
+            StickSide::Left => (
+                axes[StickEngine::axis_index(Axis::LeftX)],
+                axes[StickEngine::axis_index(Axis::LeftY)],
+            ),
+            StickSide::Right => (
+                axes[StickEngine::axis_index(Axis::RightX)],
+                axes[StickEngine::axis_index(Axis::RightY)],
+            ),
+        };
+        if params.invert_x {
+            x = -x;
+        }
+        if !params.invert_y {
+            y = -y;
+        } // natural mapping: up scrolls up
+        if !params.horizontal {
+            x = 0.0;
+        }
+        let mag_raw = (x.abs()).max(y.abs());
+        if mag_raw < params.deadzone {
+            continue;
+        }
+        let mag =
+            ((mag_raw - params.deadzone) / (1.0 - params.deadzone)).clamp(0.0, 1.0);
+        if mag <= 0.0 {
+            continue;
+        }
+        let dt_s = 0.010;
+        let mut accum = engine
+            .scroll_accum
+            .entry((cid, **side))
+            .or_insert((0.0_f32, 0.0_f32));
+        accum.0 += params.speed_lines_s * x * dt_s;
+        accum.1 += params.speed_lines_s * y * dt_s;
+        let h = accum.0.round() as i32;
+        let v = accum.1.round() as i32;
+        if h != 0 {
+            let _ = keypress.scroll_x(h);
+            accum.0 -= h as f32;
+        }
+        if v != 0 {
+            let _ = keypress.scroll_y(v);
+            accum.1 -= v as f32;
+        }
+    }
+}
+
+fn process_arrows(
+    keypress: &mut Performer,
+    engine: &StickEngine,
+    bindings: &[(&StickSide, &ArrowsParams)],
+) {
+    // For each controller with axes, process arrow bindings
+    for entry in engine.axes.iter() {
+        let id = *entry.key();
+        let axes = *entry.value();
+        for (side, params) in bindings.iter() {
+            // select vector by stick
+            let (mut x, mut y) = match side {
+                StickSide::Left => (
+                    axes[StickEngine::axis_index(Axis::LeftX)],
+                    axes[StickEngine::axis_index(Axis::LeftY)],
+                ),
+                StickSide::Right => (
+                    axes[StickEngine::axis_index(Axis::RightX)],
+                    axes[StickEngine::axis_index(Axis::RightY)],
+                ),
+            };
+            if params.invert_x {
+                x = -x;
+            }
+            if !params.invert_y {
+                y = -y;
+            } // default natural mapping up->Up; allow inversion via invert_y
+            let mag = (x * x + y * y).sqrt();
+            let new_dir = if mag < params.deadzone {
+                None
+            } else {
+                quantize_direction(x, y)
+            };
+            let key = (id, **side);
+            let prev = engine.arrows_pressed.get(&key).and_then(|v| *v.value());
+
+            if prev != new_dir {
+                // direction changed
+                engine.arrows_pressed.insert(key, new_dir);
+                if let Some(dir) = new_dir {
+                    // fire immediately for responsiveness
+                    let _ = keypress.perform(&get_direction_key(dir));
+                    engine.arrows_delay_done.insert(key, false);
+                    engine.arrows_last.insert(key, std::time::Instant::now());
+                } else {
+                    // into deadzone: clear timers
+                    engine.arrows_delay_done.remove(&key);
+                    engine.arrows_last.remove(&key);
+                }
+                continue;
+            }
+
+            // Same direction held: handle repeat scheduling
+            if let Some(dir) = new_dir {
+                let now = std::time::Instant::now();
+                let mut last = engine.arrows_last.entry(key).or_insert(now);
+                let mut delay_done =
+                    engine.arrows_delay_done.entry(key).or_insert(false);
+                let elapsed = now.duration_since(*last);
+                if !*delay_done {
+                    if elapsed.as_millis() as u64 >= params.repeat_delay_ms {
+                        let _ = keypress.perform(&get_direction_key(dir));
+                        *last = now;
+                        *delay_done = true;
+                    }
+                } else if elapsed.as_millis() as u64 >= params.repeat_interval_ms {
+                    let _ = keypress.perform(&get_direction_key(dir));
+                    *last = now;
+                }
+            }
+        }
+    }
+}
+
+fn get_direction_key(dir: Direction) -> KeyCombo {
+    match dir {
+        Direction::Up => KeyCombo::from_key(Key::UpArrow),
+        Direction::Down => KeyCombo::from_key(Key::DownArrow),
+        Direction::Left => KeyCombo::from_key(Key::LeftArrow),
+        Direction::Right => KeyCombo::from_key(Key::RightArrow),
+    }
+}
+
+fn process_stepper(
+    keypress: &mut Performer,
+    engine: &StickEngine,
+    id: u32,
+    side: &StickSide,
+    params: &StepperParams,
+    positive_key: KeyCombo,
+    negative_key: KeyCombo,
+) {
+    let axes = match engine.axes.get(&id) {
+        Some(v) => *v.value(),
+        None => return,
+    };
+    let (x, y) = (
+        axes[StickEngine::axis_index(Axis::LeftX)],
+        axes[StickEngine::axis_index(Axis::LeftY)],
+    );
+    let (rx, ry) = (
+        axes[StickEngine::axis_index(Axis::RightX)],
+        axes[StickEngine::axis_index(Axis::RightY)],
+    );
+    let (vx, vy) = match side {
+        StickSide::Left => (x, y),
+        StickSide::Right => (rx, ry),
+    };
+    let v = match params.axis {
+        ProfileAxis::X => vx,
+        ProfileAxis::Y => vy,
+    };
+    let mag = v.abs();
+    if mag < params.deadzone {
+        return;
+    }
+    // Map magnitude to interval [min, max] (larger deflection -> smaller interval)
+    let t = mag; // linear; could be gamma later
+    let interval_ms = (params.max_interval_ms as f32)
+        + (1.0 - t)
+            * ((params.min_interval_ms as f32) - (params.max_interval_ms as f32));
+    let key = if v >= 0.0 {
+        &positive_key
+    } else {
+        &negative_key
+    };
+    let now = std::time::Instant::now();
+    let c_axis = match params.axis {
+        ProfileAxis::X => Axis::LeftX,
+        ProfileAxis::Y => Axis::LeftY,
+    };
+    let mut last = engine
+        .last_step
+        .entry((id, *side, c_axis))
+        .or_insert(now - std::time::Duration::from_millis(1000));
+    let elapsed = now.duration_since(*last);
+    if elapsed.as_millis() as u64 >= interval_ms as u64 {
+        let _ = keypress.perform(key);
+        *last = now;
+    }
+}
+
+fn quantize_direction(x: f32, y: f32) -> Option<Direction> {
+    let ax = x.abs();
+    let ay = y.abs();
+    if ax == 0.0 && ay == 0.0 {
+        return None;
+    }
+    if ax > ay {
+        if x > 0.0 {
+            Some(Direction::Right)
+        } else {
+            Some(Direction::Left)
+        }
+    } else if ay > ax {
+        if y > 0.0 {
+            Some(Direction::Up)
+        } else {
+            Some(Direction::Down)
+        }
+    } else {
+        // ax == ay, tie-breaker: prefer vertical
+        if y > 0.0 {
+            Some(Direction::Up)
+        } else if y < 0.0 {
+            Some(Direction::Down)
+        } else {
+            None
+        }
+    }
+}
+
+fn dispatch_button_action(
     gamacros: &Gamacros,
     keypress: &mut Performer,
     manager: &ControllerManager,
     id: u32,
-    rule: Rule,
-    phase: TriggerPhase,
+    rule: ButtonRule,
+    phase: ButtonPhase,
 ) {
     fn vibrate(
         manager: &ControllerManager,
@@ -174,25 +517,19 @@ fn dispatch_action(
 
     let supports_rumble = gamacros.supports_rumble(id);
 
-    match rule.action {
-        Action::Key(combo) => {
-            // vibrate before action
-            match rule.when {
-                TriggerPhase::Pressed => match phase {
-                    TriggerPhase::Pressed => {
-                        vibrate(manager, id, rule.vibrate, supports_rumble);
-                        let _ = keypress.press(&combo);
-                    }
-                    TriggerPhase::Released => {
-                        let _ = keypress.release(&combo);
-                    }
-                },
-                TriggerPhase::Released => {
-                    vibrate(manager, id, rule.vibrate, supports_rumble);
-                    let _ = keypress.perform(&combo);
-                }
+    match rule.when {
+        ButtonPhase::Pressed => match phase {
+            ButtonPhase::Pressed => {
+                vibrate(manager, id, rule.vibrate, supports_rumble);
+                let _ = keypress.press(&rule.action);
             }
+            ButtonPhase::Released => {
+                let _ = keypress.release(&rule.action);
+            }
+        },
+        ButtonPhase::Released => {
+            vibrate(manager, id, rule.vibrate, supports_rumble);
+            let _ = keypress.perform(&rule.action);
         }
-        Action::None => {}
     }
 }

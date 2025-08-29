@@ -1,4 +1,4 @@
-use enigo::{Enigo, InputResult, NewConError, Settings};
+use enigo::{Axis, Coordinate, Enigo, InputResult, Mouse, NewConError, Settings};
 
 use crate::KeyCombo;
 
@@ -29,5 +29,17 @@ impl Performer {
 
     pub fn release(&mut self, key_combo: &KeyCombo) -> InputResult<()> {
         key_combo.release(&mut self.enigo)
+    }
+
+    pub fn mouse_move(&mut self, x: i32, y: i32) -> InputResult<()> {
+        self.enigo.move_mouse(x, y, Coordinate::Rel)
+    }
+
+    pub fn scroll_x(&mut self, value: i32) -> InputResult<()> {
+        self.enigo.scroll(value, Axis::Horizontal)
+    }
+
+    pub fn scroll_y(&mut self, value: i32) -> InputResult<()> {
+        self.enigo.scroll(value, Axis::Vertical)
     }
 }

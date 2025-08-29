@@ -10,7 +10,7 @@ use thiserror::Error;
 pub use crate::events::{ControllerEvent, EventReceiver};
 pub use crate::handle::ControllerHandle;
 pub use crate::manager::ControllerManager;
-pub use crate::types::{Button, ControllerId, ControllerInfo};
+pub use crate::types::{Button, ControllerId, ControllerInfo, Axis};
 
 /// Error type for controller management operations.
 #[derive(Debug, Error)]

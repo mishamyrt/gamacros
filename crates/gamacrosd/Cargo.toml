@@ -16,6 +16,7 @@ gamacros-keypress = { workspace = true }
 gamacros-profile = { workspace = true }
 gamacros-activity = { workspace = true }
 gamacros-bit-mask = { workspace = true }
+enigo = { workspace = true }
 ctrlc = { workspace = true }
 crossbeam-channel = { workspace = true }
 thiserror = { workspace = true }

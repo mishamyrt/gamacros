@@ -5,7 +5,7 @@ mod profile_v1;
 use thiserror::Error;
 
 pub use profile_common::parse_profile;
-pub use profile::{Profile, DeviceRemap, Rule, Trigger, TriggerPhase, Action};
+pub use profile::*;
 
 #[derive(Debug, Error)]
 pub enum ProfileError {
@@ -21,6 +21,12 @@ pub enum ProfileError {
     InvalidId(String, String),
     #[error("invalid button: {0}")]
     InvalidButton(String),
+    #[error("invalid stick: {0}")]
+    InvalidStick(String),
+    #[error("invalid stick side: {0}")]
+    InvalidStickSide(String),
+    #[error("invalid axis: {0}")]
+    InvalidAxis(String),
     #[error("key parse error: {0}")]
     KeyParseError(String),
 }

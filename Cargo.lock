@@ -407,6 +407,7 @@ dependencies = [
  "crossbeam-channel",
  "ctrlc",
  "dashmap",
+ "enigo",
  "fern",
  "gamacros-activity",
  "gamacros-bit-mask",

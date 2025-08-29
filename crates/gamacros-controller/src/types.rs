@@ -23,6 +23,17 @@ pub enum Button {
     DPadRight,
 }
 
+/// Analog axes supported by this crate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Axis {
+    LeftX,
+    LeftY,
+    RightX,
+    RightY,
+    LeftTrigger,
+    RightTrigger,
+}
+
 /// Controller meta information that remains stable across events.
 #[derive(Debug, Clone)]
 pub struct ControllerInfo {

@@ -20,9 +20,11 @@ pub struct KeyCombo {
 }
 
 impl KeyCombo {
-    pub fn is_illumination(&self) -> bool {
-        self.keys.len() == 1
-            && (self.keys[0] == ILLUMINATION_UP || self.keys[0] == ILLUMINATION_DOWN)
+    pub fn from_key(key: Key) -> Self {
+        Self {
+            modifiers: Modifiers::empty(),
+            keys: vec![key],
+        }
     }
 }
 

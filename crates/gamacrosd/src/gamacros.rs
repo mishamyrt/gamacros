@@ -8,7 +8,7 @@ use crate::{print_debug, print_info};
 
 use gamacros_bit_mask::AtomicBitmask;
 use gamacros_controller::{Button, ControllerId, ControllerInfo};
-use gamacros_profile::{Profile, Rule, Trigger, TriggerPhase};
+use gamacros_profile::{AppRules, ButtonPhase, ButtonRule, Profile, StickRules};
 
 #[derive(Debug, Error)]
 pub enum ManagerError {
@@ -66,10 +66,10 @@ impl Gamacros {
         );
         let mapping = self
             .profile
-            .device_remaps
+            .controllers
             .iter()
             .find(|d| d.vid == info.vendor_id && d.pid == info.product_id)
-            .map(|d| ControllerMapping::new(d.mapping.clone()))
+            .map(|d| ControllerMapping::new(d.remap.clone()))
             .unwrap_or_default();
         let state = ControllerState {
             mapping,
@@ -111,15 +111,23 @@ impl Gamacros {
             .clone()
     }
 
+    pub fn get_stick_bindings(&self) -> Option<StickRules> {
+        let active_app = self.get_active_app();
+        self.profile
+            .rules
+            .get(&active_app)
+            .map(|r| r.sticks.clone())
+    }
+
     pub fn handle_button(
         &self,
         id: ControllerId,
         button: Button,
-        phase: TriggerPhase,
-    ) -> Vec<Rule> {
+        phase: ButtonPhase,
+    ) -> Vec<ButtonRule> {
         print_debug!("handle button - {id} {button:?} {phase:?}");
         let active_app = self.get_active_app();
-        let Some(app_rules) = self.profile.app_rules.get(&active_app).cloned()
+        let Some(app_rules) = self.profile.rules.get(&active_app).cloned()
         else {
             return vec![];
         };
@@ -133,7 +141,7 @@ impl Gamacros {
         // snapshot before change
         let prev_pressed = state.pressed.load();
 
-        if phase == TriggerPhase::Pressed {
+        if phase == ButtonPhase::Pressed {
             state.pressed.insert(button);
         } else {
             state.pressed.remove(button);
@@ -142,27 +150,23 @@ impl Gamacros {
         // snapshot after change
         let now_pressed = state.pressed.load();
 
-        let mut candidates: Vec<(Rule, u32)> = vec![];
+        let mut candidates: Vec<(ButtonRule, u32)> = vec![];
 
-        for rule in app_rules.iter() {
-            match &rule.trigger {
-                Trigger::Chord(target) => {
-                    let was = prev_pressed.is_superset(target);
-                    let is_now = now_pressed.is_superset(target);
+        for (target, rule) in app_rules.buttons.iter() {
+            let was = prev_pressed.is_superset(target);
+            let is_now = now_pressed.is_superset(target);
 
-                    let fire = match rule.when {
-                        // For Pressed rules, fire on both edges (activation and deactivation)
-                        // so that main.rs can press on activation (phase=Pressed)
-                        // and release on deactivation (phase=Released).
-                        TriggerPhase::Pressed => was != is_now,
-                        TriggerPhase::Released => was && !is_now,
-                    };
+            let fire = match rule.when {
+                // For Pressed rules, fire on both edges (activation and deactivation)
+                // so that main.rs can press on activation (phase=Pressed)
+                // and release on deactivation (phase=Released).
+                ButtonPhase::Pressed => was != is_now,
+                ButtonPhase::Released => was && !is_now,
+            };
 
-                    if fire {
-                        let bits: u32 = target.count();
-                        candidates.push((rule.clone(), bits));
-                    }
-                }
+            if fire {
+                let bits: u32 = target.count();
+                candidates.push((rule.clone(), bits));
             }
         }
 
@@ -171,7 +175,7 @@ impl Gamacros {
         }
 
         let max_bits = candidates.iter().map(|(_, b)| *b).max().unwrap_or(0);
-        let actions: Vec<Rule> = candidates
+        let actions: Vec<ButtonRule> = candidates
             .into_iter()
             .filter(|(_, b)| *b == max_bits)
             .map(|(r, _)| r)

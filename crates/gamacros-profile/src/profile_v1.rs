@@ -6,7 +6,9 @@ use serde::Deserialize;
 
 use crate::{
     profile::{
-        Action, ButtonChord, DeviceRemap, Rule, Profile, Trigger, TriggerPhase,
+        AppRules, ArrowsParams, Axis, BundleId, ButtonChord, ButtonPhase,
+        ButtonRule, ButtonRules, ControllerParams, MouseParams, Profile,
+        ScrollParams, StepperParams, StickMode, StickRules, StickSide,
     },
     ProfileError,
 };
@@ -16,29 +18,73 @@ use crate::{
 pub(crate) struct ProfileV1 {
     version: u8,
     #[serde(default)]
-    gamepads: Vec<ProfileV1GamepadRemap>,
+    controllers: Vec<ProfileV1ControllerParams>,
     #[serde(default)]
-    apps: HashMap<String, Vec<ProfileV1Rule>>, // bundle_id -> rules
+    apps: HashMap<String, ProfileV1App>, // bundle_id -> app mapping
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct ProfileV1App {
+    #[serde(default)]
+    pub buttons: HashMap<String, ProfileV1ButtonRule>, // chord -> button rule
+    #[serde(default)]
+    pub sticks: HashMap<String, ProfileV1Stick>, // side -> stick rules
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ProfileV1GamepadRemap {
-    pub vid: serde_yaml::Value,
-    pub pid: serde_yaml::Value,
-    #[serde(default)]
-    pub mapping: HashMap<String, String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ProfileV1Rule {
-    pub trigger: serde_yaml::Value,
-    pub action: serde_yaml::Value,
+struct ProfileV1ButtonRule {
+    pub action: String,
     #[serde(default)]
     pub vibrate: Option<u16>,
     #[serde(default)]
     pub when: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProfileV1ControllerParams {
+    pub vid: u16,
+    pub pid: u16,
+    #[serde(default)]
+    pub remap: HashMap<String, String>, // button -> button
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProfileV1Stick {
+    pub mode: String, // arrows | volume | brightness | scroll | mouse_move
+    #[serde(default)]
+    pub deadzone: Option<f32>,
+    // arrows
+    #[serde(default)]
+    pub repeat_delay_ms: Option<u64>,
+    #[serde(default)]
+    pub repeat_interval_ms: Option<u64>,
+    #[serde(default)]
+    pub invert_x: Option<bool>,
+    #[serde(default)]
+    pub invert_y: Option<bool>,
+    // stepper (volume/brightness)
+    #[serde(default)]
+    pub axis: Option<String>, // x | y
+    #[serde(default)]
+    pub invert: Option<bool>,
+    #[serde(default)]
+    pub min_interval_ms: Option<u64>,
+    #[serde(default)]
+    pub max_interval_ms: Option<u64>,
+    // mouse
+    #[serde(default)]
+    pub max_speed_px_s: Option<f32>,
+    #[serde(default)]
+    pub gamma: Option<f32>,
+    // scroll
+    #[serde(default)]
+    pub speed_lines_s: Option<f32>,
+    #[serde(default)]
+    pub horizontal: Option<bool>,
 }
 
 impl ProfileV1 {
@@ -48,85 +94,163 @@ impl ProfileV1 {
             return Err(ProfileError::UnsupportedVersion(raw.version));
         }
         let device_remaps = raw
-            .gamepads
+            .controllers
             .into_iter()
             .map(parse_device_remap)
             .collect::<Result<_, _>>()?;
 
-        let mut app_rules: HashMap<Box<str>, Vec<Rule>> = HashMap::new();
-        for (app, rules) in raw.apps.into_iter() {
-            let parsed = rules
-                .into_iter()
-                .map(parse_rule)
-                .collect::<Result<Vec<_>, _>>()?;
-            app_rules.insert(app.into(), parsed);
+        let mut rules: HashMap<BundleId, AppRules> = HashMap::new();
+        for (bundle_id, app_actions) in raw.apps.into_iter() {
+            let mut button_rules: ButtonRules = HashMap::new();
+            let mut stick_rules: StickRules = HashMap::new();
+
+            for (chord_str, rule) in app_actions.buttons.into_iter() {
+                let chord = parse_chord(&chord_str)?;
+                let rule = parse_button_rule(rule)?;
+                button_rules.insert(chord, rule);
+            }
+
+            for (side, stick_raw) in app_actions.sticks.into_iter() {
+                let side = StickSide::parse(&side)?;
+                let mode = parse_stick_mode(stick_raw)?;
+                stick_rules.insert(side, mode);
+            }
+
+            let app_rules = AppRules {
+                buttons: button_rules,
+                sticks: stick_rules,
+            };
+
+            rules.insert(bundle_id.into(), app_rules);
         }
 
         Ok(Profile {
-            app_rules,
-            device_remaps,
+            controllers: device_remaps,
+            rules,
         })
     }
 }
 
 fn parse_device_remap(
-    raw: ProfileV1GamepadRemap,
-) -> Result<DeviceRemap, ProfileError> {
-    let vid = parse_vidpid(&raw.vid).ok_or_else(|| {
-        ProfileError::InvalidId("vid".to_string(), format!("{:?}", raw.vid))
-    })?;
-    let pid = parse_vidpid(&raw.pid).ok_or_else(|| {
-        ProfileError::InvalidId("pid".to_string(), format!("{:?}", raw.pid))
-    })?;
-    let mut mapping = HashMap::new();
-    for (k, v) in raw.mapping.into_iter() {
+    raw: ProfileV1ControllerParams,
+) -> Result<ControllerParams, ProfileError> {
+    let mut remap = HashMap::new();
+    for (k, v) in raw.remap.into_iter() {
         let from = parse_button_name(&k)?;
         let to = parse_button_name(&v)?;
-        mapping.insert(from, to);
+        remap.insert(from, to);
     }
-    Ok(DeviceRemap { vid, pid, mapping })
+    Ok(ControllerParams {
+        vid: raw.vid,
+        pid: raw.pid,
+        remap,
+    })
 }
 
-fn parse_rule(raw: ProfileV1Rule) -> Result<Rule, ProfileError> {
+fn parse_button_rule(raw: ProfileV1ButtonRule) -> Result<ButtonRule, ProfileError> {
     let when = match raw.when.as_deref() {
-        Some("pressed") | None => TriggerPhase::Pressed,
-        Some("released") => TriggerPhase::Released,
+        Some("pressed") | None => ButtonPhase::Pressed,
+        Some("released") => ButtonPhase::Released,
         Some(other) => {
             return Err(ProfileError::InvalidTrigger(format!(
                 "invalid when: {other}"
             )))
         }
     };
+    let action = raw
+        .action
+        .parse::<KeyCombo>()
+        .map_err(ProfileError::KeyParseError)?;
 
-    // trigger can be string (chord) or mapping for dpad
-    let trigger = if raw.trigger.as_str().is_some() {
-        let s = raw.trigger.as_str().unwrap();
-        Trigger::Chord(parse_chord(s)?)
-    } else {
-        return Err(ProfileError::InvalidTrigger(format!(
-            "unsupported trigger: {:?}",
-            raw.trigger
-        )));
-    };
-
-    let action = match &trigger {
-        Trigger::Chord(_) => parse_action(raw.action)?,
-    };
-
-    Ok(Rule {
-        trigger,
-        action,
+    Ok(ButtonRule {
         vibrate: raw.vibrate,
+        action,
         when,
     })
 }
 
-fn parse_action(val: serde_yaml::Value) -> Result<Action, ProfileError> {
-    if let Some(s) = val.as_str() {
-        let kc = s.parse::<KeyCombo>().map_err(ProfileError::KeyParseError)?;
-        return Ok(Action::Key(kc));
-    }
-    Err(ProfileError::InvalidTrigger("invalid action".into()))
+fn parse_stick_mode(raw: ProfileV1Stick) -> Result<StickMode, ProfileError> {
+    // TODO: deadzone is not supported yet
+    let deadzone = raw.deadzone.unwrap_or(0.15);
+    let mode = match raw.mode.to_lowercase().as_str() {
+        "arrows" => {
+            let params = ArrowsParams {
+                deadzone,
+                repeat_delay_ms: raw.repeat_delay_ms.unwrap_or(300),
+                repeat_interval_ms: raw.repeat_interval_ms.unwrap_or(40),
+                invert_x: raw.invert_x.unwrap_or(false),
+                invert_y: raw.invert_y.unwrap_or(false),
+            };
+            StickMode::Arrows(params)
+        }
+        "mouse_move" => {
+            let params = MouseParams {
+                deadzone,
+                max_speed_px_s: raw.max_speed_px_s.unwrap_or(1600.0),
+                gamma: raw.gamma.unwrap_or(1.5),
+                invert_x: raw.invert_x.unwrap_or(false),
+                invert_y: raw.invert_y.unwrap_or(false),
+            };
+            StickMode::MouseMove(params)
+        }
+        "scroll" => {
+            let params = ScrollParams {
+                deadzone,
+                speed_lines_s: raw.speed_lines_s.unwrap_or(60.0),
+                horizontal: raw.horizontal.unwrap_or(false),
+                invert_x: raw.invert_x.unwrap_or(false),
+                invert_y: raw.invert_y.unwrap_or(false),
+            };
+            StickMode::Scroll(params)
+        }
+        "volume" => {
+            let axis =
+                match raw.axis.as_deref().unwrap_or("y").to_lowercase().as_str() {
+                    "x" => Axis::X,
+                    "y" => Axis::Y,
+                    other => {
+                        return Err(ProfileError::InvalidTrigger(format!(
+                            "invalid axis: {other}"
+                        )))
+                    }
+                };
+            let params = StepperParams {
+                axis,
+                deadzone,
+                invert: raw.invert.unwrap_or(false),
+                min_interval_ms: raw.min_interval_ms.unwrap_or(250),
+                max_interval_ms: raw.max_interval_ms.unwrap_or(40),
+            };
+            StickMode::Volume(params)
+        }
+        "brightness" => {
+            let axis =
+                match raw.axis.as_deref().unwrap_or("y").to_lowercase().as_str() {
+                    "x" => Axis::X,
+                    "y" => Axis::Y,
+                    other => {
+                        return Err(ProfileError::InvalidTrigger(format!(
+                            "invalid axis: {other}"
+                        )))
+                    }
+                };
+            let params = StepperParams {
+                axis,
+                deadzone,
+                invert: raw.invert.unwrap_or(false),
+                min_interval_ms: raw.min_interval_ms.unwrap_or(250),
+                max_interval_ms: raw.max_interval_ms.unwrap_or(40),
+            };
+            StickMode::Brightness(params)
+        }
+        other => {
+            return Err(ProfileError::InvalidTrigger(format!(
+                "invalid stick mode: {other}"
+            )))
+        }
+    };
+
+    Ok(mode)
 }
 
 fn parse_chord(input: &str) -> Result<ButtonChord, ProfileError> {
@@ -149,11 +273,14 @@ fn parse_button_name(name: &str) -> Result<Button, ProfileError> {
         "b" => Button::B,
         "x" => Button::X,
         "y" => Button::Y,
+
         "back" | "select" => Button::Back,
         "guide" | "home" => Button::Guide,
         "start" => Button::Start,
+
         "ls" | "leftstick" | "left_stick" => Button::LeftStick,
         "rs" | "rightstick" | "right_stick" => Button::RightStick,
+
         "lb" | "left_bump" | "leftshoulder" | "left_shoulder" | "l1" => {
             Button::LeftShoulder
         }
@@ -162,25 +289,12 @@ fn parse_button_name(name: &str) -> Result<Button, ProfileError> {
         }
         "lt" | "lefttrigger" | "left_trigger" | "l2" => Button::LeftTrigger,
         "rt" | "righttrigger" | "right_trigger" | "r2" => Button::RightTrigger,
+
         "dpad_up" | "dpadup" | "up" => Button::DPadUp,
         "dpad_down" | "dpaddown" | "down" => Button::DPadDown,
         "dpad_left" | "dpadleft" | "left" => Button::DPadLeft,
         "dpad_right" | "dpadright" | "right" => Button::DPadRight,
+
         _ => return Err(ProfileError::InvalidButton(name.to_string())),
     })
-}
-
-fn parse_hex_u16(input: &str) -> Option<u16> {
-    let s = input.trim().trim_start_matches("0x");
-    u16::from_str_radix(s, 16).ok()
-}
-
-fn parse_vidpid(v: &serde_yaml::Value) -> Option<u16> {
-    if let Some(s) = v.as_str() {
-        return parse_hex_u16(s);
-    }
-    if let Some(n) = v.as_u64() {
-        return u16::try_from(n).ok();
-    }
-    None
 }

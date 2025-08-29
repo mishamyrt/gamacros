@@ -12,7 +12,7 @@ use sdl2::joystick::Joystick;
 use crate::command::Command;
 use crate::events::ControllerEvent;
 use crate::manager::Inner;
-use crate::types::{Button, ControllerId, ControllerInfo};
+use crate::types::{Button, ControllerId, ControllerInfo, Axis};
 
 /// Starts the SDL2-backed runtime thread that drives device discovery and events.
 pub(crate) fn start_runtime_thread(
@@ -159,32 +159,31 @@ pub(crate) fn start_runtime_thread(
                             );
                         }
                     }
-                    Event::ControllerAxisMotion {
-                        which, axis, value, ..
-                    } => {
+                    Event::ControllerAxisMotion { which, axis, value, .. } => {
                         const THRESHOLD: i16 = 20000;
                         let id = which as ControllerId;
-                        let entry =
-                            trigger_state.entry(id).or_insert((false, false));
+                        let entry = trigger_state.entry(id).or_insert((false, false));
+
+                        // Emit analog event for all axes
+                        if let Some(mapped) = map_sdl_axis(axis) {
+                            let norm = (value as f32) / (i16::MAX as f32);
+                            broadcast(&inner, ControllerEvent::AxisMotion { id, axis: mapped, value: norm });
+                        }
+
+                        // Preserve trigger-as-button semantics for compatibility
                         match axis {
                             SdlAxis::TriggerLeft => {
                                 let pressed = value > THRESHOLD;
                                 if pressed && !entry.0 {
                                     broadcast(
                                         &inner,
-                                        ControllerEvent::ButtonPressed {
-                                            id,
-                                            button: Button::LeftTrigger,
-                                        },
+                                        ControllerEvent::ButtonPressed { id, button: Button::LeftTrigger },
                                     );
                                     entry.0 = true;
                                 } else if !pressed && entry.0 {
                                     broadcast(
                                         &inner,
-                                        ControllerEvent::ButtonReleased {
-                                            id,
-                                            button: Button::LeftTrigger,
-                                        },
+                                        ControllerEvent::ButtonReleased { id, button: Button::LeftTrigger },
                                     );
                                     entry.0 = false;
                                 }
@@ -194,19 +193,13 @@ pub(crate) fn start_runtime_thread(
                                 if pressed && !entry.1 {
                                     broadcast(
                                         &inner,
-                                        ControllerEvent::ButtonPressed {
-                                            id,
-                                            button: Button::RightTrigger,
-                                        },
+                                        ControllerEvent::ButtonPressed { id, button: Button::RightTrigger },
                                     );
                                     entry.1 = true;
                                 } else if !pressed && entry.1 {
                                     broadcast(
                                         &inner,
-                                        ControllerEvent::ButtonReleased {
-                                            id,
-                                            button: Button::RightTrigger,
-                                        },
+                                        ControllerEvent::ButtonReleased { id, button: Button::RightTrigger },
                                     );
                                     entry.1 = false;
                                 }
@@ -267,6 +260,17 @@ fn map_sdl_button(button: SdlButton) -> Option<Button> {
         SdlButton::DPadLeft => Button::DPadLeft,
         SdlButton::DPadRight => Button::DPadRight,
         _ => return None,
+    })
+}
+
+fn map_sdl_axis(axis: SdlAxis) -> Option<Axis> {
+    Some(match axis {
+        SdlAxis::LeftX => Axis::LeftX,
+        SdlAxis::LeftY => Axis::LeftY,
+        SdlAxis::RightX => Axis::RightX,
+        SdlAxis::RightY => Axis::RightY,
+        SdlAxis::TriggerLeft => Axis::LeftTrigger,
+        SdlAxis::TriggerRight => Axis::RightTrigger,
     })
 }
 
