@@ -211,8 +211,45 @@ fn main() {
     });
 
     // Start monitoring on the main thread (blocks until error/exit)
-    let _ = monitor.start_listening();
-    let _ = event_loop.join();
+    if let Err(e) = monitor.start_listening() {
+        print_error!("activity monitor error: {e}");
+        return;
+    }
+    if let Err(e) = event_loop.join() {
+        print_error!("event loop error: {e:?}");
+    }
+}
+
+// Small helpers to keep hot paths concise and consistent
+fn axes_for_side(axes: [f32; 6], side: &StickSide) -> (f32, f32) {
+    match side {
+        StickSide::Left => (
+            axes[StickEngine::axis_index(Axis::LeftX)],
+            axes[StickEngine::axis_index(Axis::LeftY)],
+        ),
+        StickSide::Right => (
+            axes[StickEngine::axis_index(Axis::RightX)],
+            axes[StickEngine::axis_index(Axis::RightY)],
+        ),
+    }
+}
+
+fn invert_xy(x: f32, y: f32, invert_x: bool, invert_y: bool) -> (f32, f32) {
+    let nx = if invert_x { -x } else { x };
+    let ny = if invert_y { -y } else { y };
+    (nx, ny)
+}
+
+fn magnitude2d(x: f32, y: f32) -> f32 {
+    (x * x + y * y).sqrt()
+}
+
+fn normalize_after_deadzone(mag: f32, deadzone: f32) -> f32 {
+    if mag <= deadzone {
+        0.0
+    } else {
+        ((mag - deadzone) / (1.0 - deadzone)).clamp(0.0, 1.0)
+    }
 }
 
 fn process_mouse_move(
@@ -223,29 +260,14 @@ fn process_mouse_move(
     let (side, params) = binding;
     for entry in engine.axes.iter() {
         let axes = *entry.value();
-        let (mut x, mut y) = match side {
-            StickSide::Left => (
-                axes[StickEngine::axis_index(Axis::LeftX)],
-                axes[StickEngine::axis_index(Axis::LeftY)],
-            ),
-            StickSide::Right => (
-                axes[StickEngine::axis_index(Axis::RightX)],
-                axes[StickEngine::axis_index(Axis::RightY)],
-            ),
-        };
-        if params.invert_x {
-            x = -x;
-        }
-        if params.invert_y {
-            y = -y;
-        }
-        let mag_raw = (x * x + y * y).sqrt();
+        let (x0, y0) = axes_for_side(axes, side);
+        let (x, y) = invert_xy(x0, y0, params.invert_x, params.invert_y);
+        let mag_raw = magnitude2d(x, y);
         if mag_raw < params.deadzone {
             continue;
         }
         // normalize after deadzone to avoid drift
-        let mag = ((mag_raw - params.deadzone) / (1.0 - params.deadzone))
-            .clamp(0.0, 1.0)
+        let mag = normalize_after_deadzone(mag_raw, params.deadzone)
             .powf(params.gamma.max(0.1));
         if mag <= 0.0 {
             continue;
@@ -271,32 +293,13 @@ fn process_scroll(
     for entry in engine.axes.iter() {
         let cid = *entry.key();
         let axes = *entry.value();
-        let (mut x, mut y) = match side {
-            StickSide::Left => (
-                axes[StickEngine::axis_index(Axis::LeftX)],
-                axes[StickEngine::axis_index(Axis::LeftY)],
-            ),
-            StickSide::Right => (
-                axes[StickEngine::axis_index(Axis::RightX)],
-                axes[StickEngine::axis_index(Axis::RightY)],
-            ),
-        };
-        if params.invert_x {
-            x = -x;
-        }
-        if !params.invert_y {
-            y = -y;
-        } // natural mapping: up scrolls up
+        let (x0, y0) = axes_for_side(axes, side);
+        let (mut x, y) = invert_xy(x0, y0, params.invert_x, !params.invert_y); // natural mapping: up scrolls up
         if !params.horizontal {
             x = 0.0;
         }
-        let mag_raw = (x.abs()).max(y.abs());
-        if mag_raw < params.deadzone {
-            continue;
-        }
-        let mag =
-            ((mag_raw - params.deadzone) / (1.0 - params.deadzone)).clamp(0.0, 1.0);
-        if mag <= 0.0 {
+        let mag_raw = x.abs().max(y.abs());
+        if normalize_after_deadzone(mag_raw, params.deadzone) <= 0.0 {
             continue;
         }
         let dt_s = 0.1;
@@ -330,23 +333,9 @@ fn process_arrows(
         let axes = *entry.value();
         for (side, params) in bindings.iter() {
             // select vector by stick
-            let (mut x, mut y) = match side {
-                StickSide::Left => (
-                    axes[StickEngine::axis_index(Axis::LeftX)],
-                    axes[StickEngine::axis_index(Axis::LeftY)],
-                ),
-                StickSide::Right => (
-                    axes[StickEngine::axis_index(Axis::RightX)],
-                    axes[StickEngine::axis_index(Axis::RightY)],
-                ),
-            };
-            if params.invert_x {
-                x = -x;
-            }
-            if !params.invert_y {
-                y = -y;
-            } // default natural mapping up->Up; allow inversion via invert_y
-            let mag = (x * x + y * y).sqrt();
+            let (x0, y0) = axes_for_side(axes, side);
+            let (x, y) = invert_xy(x0, y0, params.invert_x, !params.invert_y); // default natural mapping up->Up; allow inversion via invert_y
+            let mag = magnitude2d(x, y);
             let new_dir = if mag < params.deadzone {
                 None
             } else {
@@ -446,9 +435,11 @@ fn process_stepper(
         &negative_key
     };
     let now = std::time::Instant::now();
-    let c_axis = match params.axis {
-        ProfileAxis::X => Axis::LeftX,
-        ProfileAxis::Y => Axis::LeftY,
+    let c_axis = match (*side, params.axis) {
+        (StickSide::Left,  ProfileAxis::X) => Axis::LeftX,
+        (StickSide::Left,  ProfileAxis::Y) => Axis::LeftY,
+        (StickSide::Right, ProfileAxis::X) => Axis::RightX,
+        (StickSide::Right, ProfileAxis::Y) => Axis::RightY,
     };
     let mut last = engine
         .last_step

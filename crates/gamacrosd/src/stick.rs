@@ -1,5 +1,4 @@
 use gamacros_controller::Axis;
-use gamacros_keypress::KeyCombo;
 use gamacros_profile::StickSide;
 
 pub(crate) struct StickEngine {

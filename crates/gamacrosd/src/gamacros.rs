@@ -8,7 +8,7 @@ use crate::{print_debug, print_info};
 
 use gamacros_bit_mask::AtomicBitmask;
 use gamacros_controller::{Button, ControllerId, ControllerInfo};
-use gamacros_profile::{AppRules, ButtonPhase, ButtonRule, Profile, StickRules};
+use gamacros_profile::{ButtonPhase, ButtonRule, Profile, StickRules};
 
 #[derive(Debug, Error)]
 pub enum ManagerError {
