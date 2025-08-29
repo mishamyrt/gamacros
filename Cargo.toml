@@ -29,7 +29,7 @@ gamacros-bit-mask = { path = "crates/gamacros-bit/mask" }
 ctrlc = "3.4.5"
 crossbeam-channel = "0.5"
 dashmap = "5"
-sdl2 = { version = "0.37", features = ["bundled", "static-link"], optional = false }
+sdl2 = { version = "0.37" }
 
 syn = { version = "2", features = ["full"] }
 quote = "1"
@@ -91,3 +91,12 @@ redundant_clone = "warn"
 debug_assert_with_mut_call = "warn"
 unused_peekable = "warn"
 large_stack_arrays = "allow"
+
+[profile.release]
+opt-level = "z"        # size-first (use 3 for speed-first)
+lto = "fat"            # "thin" if link time hurts
+codegen-units = 1
+panic = "abort"
+strip = true
+debug = 0
+incremental = false

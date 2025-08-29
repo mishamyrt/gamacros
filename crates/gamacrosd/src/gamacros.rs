@@ -1,16 +1,13 @@
-use std::{
-    collections::HashMap,
-    sync::{RwLock, Mutex},
-};
+use std::cell::RefCell;
+use std::sync::Arc;
+use std::collections::HashMap;
 
-use dashmap::DashMap;
-use thiserror::Error;
 use colored::Colorize;
 
 use crate::{print_debug, print_info, stick::StickProcessor};
 
 use gamacros_keypress::KeyCombo;
-use gamacros_bit_mask::AtomicBitmask;
+use gamacros_bit_mask::Bitmask;
 use gamacros_controller::{Button, ControllerId, ControllerInfo, Axis as CtrlAxis};
 use gamacros_profile::{ButtonPhase, ButtonRule, Profile, StickRules};
 
@@ -23,13 +20,6 @@ pub enum Action {
     Scroll { h: i32, v: i32 },
     Rumble { id: ControllerId, ms: u32 },
 }
-
-#[derive(Debug, Error)]
-pub enum ManagerError {
-    #[error("failed to lock active app")]
-    FailedToLockActiveApp,
-}
-type Result<T> = std::result::Result<T, ManagerError>;
 
 #[derive(Debug, Clone, Default)]
 pub struct ControllerMapping(HashMap<Button, Button>);
@@ -47,24 +37,26 @@ impl ControllerMapping {
 #[derive(Debug)]
 struct ControllerState {
     mapping: ControllerMapping,
-    pressed: AtomicBitmask<Button>,
+    pressed: Bitmask<Button>,
     rumble: bool,
 }
 
 pub struct Gamacros {
     profile: Profile,
-    active_app: RwLock<Box<str>>,
-    controllers: DashMap<ControllerId, ControllerState>,
-    sticks: Mutex<StickProcessor>,
+    active_app: Box<str>,
+    controllers: HashMap<ControllerId, ControllerState>,
+    sticks: RefCell<StickProcessor>,
+    active_stick_rules: Option<Arc<StickRules>>,
 }
 
 impl Gamacros {
     pub fn new(profile: Profile) -> Self {
         Self {
             profile,
-            active_app: RwLock::new("".into()),
-            controllers: DashMap::new(),
-            sticks: Mutex::new(StickProcessor::new()),
+            active_app: "".into(),
+            controllers: HashMap::new(),
+            sticks: RefCell::new(StickProcessor::new()),
+            active_stick_rules: None,
         }
     }
 
@@ -72,7 +64,7 @@ impl Gamacros {
         self.controllers.contains_key(&id)
     }
 
-    pub fn add_controller(&self, info: ControllerInfo) -> Result<()> {
+    pub fn add_controller(&mut self, info: ControllerInfo) {
         print_info!(
             "add controller - {0} id={1} vid=0x{2:x} pid=0x{3:x}",
             info.name,
@@ -89,95 +81,74 @@ impl Gamacros {
             .unwrap_or_default();
         let state = ControllerState {
             mapping,
-            pressed: AtomicBitmask::empty(),
+            pressed: Bitmask::empty(),
             rumble: info.supports_rumble,
         };
         if self.is_known(info.id) {
             print_debug!("controller already known - id={0}", info.id);
         }
         self.controllers.insert(info.id, state);
-        Ok(())
     }
 
-    pub fn remove_controller(&self, id: ControllerId) -> Result<()> {
+    pub fn remove_controller(&mut self, id: ControllerId) {
         print_info!("remove device - {id:x}");
         self.controllers.remove(&id);
-        Ok(())
     }
 
     pub fn supports_rumble(&self, id: ControllerId) -> bool {
         self.controllers.get(&id).map(|s| s.rumble).unwrap_or(false)
     }
 
-    pub fn set_active_app(&self, app: &str) -> Result<()> {
+    pub fn set_active_app(&mut self, app: &str) {
         print_debug!("app change - {app}");
-        match self.active_app.write() {
-            Ok(mut active_app) => {
-                *active_app = app.into();
-                if let Ok(mut sticks) = self.sticks.lock() {
-                    sticks.on_app_change();
-                }
-                Ok(())
-            }
-            Err(_) => Err(ManagerError::FailedToLockActiveApp),
-        }
-    }
-
-    pub fn get_active_app(&self) -> Box<str> {
-        self.active_app
-            .read()
-            .expect("failed to lock active app")
-            .clone()
-    }
-
-    pub fn get_stick_bindings(&self) -> Option<StickRules> {
-        let active_app = self.get_active_app();
-        self.profile
+        self.active_app = app.into();
+        self.sticks.borrow_mut().on_app_change();
+        self.active_stick_rules = self
+            .profile
             .rules
-            .get(&active_app)
-            .map(|r| r.sticks.clone())
+            .get(&*self.active_app)
+            .map(|r| Arc::new(r.sticks.clone()));
     }
 
-    pub fn on_axis_motion(&self, id: ControllerId, axis: CtrlAxis, value: f32) {
-        if let Ok(mut s) = self.sticks.lock() {
-            s.update_axis(id, axis, value);
-        }
+    pub fn get_active_app(&self) -> &str { &self.active_app }
+
+    pub fn get_stick_bindings_arc(&self) -> Option<Arc<StickRules>> {
+        self.active_stick_rules.clone()
     }
 
-    pub fn on_controller_disconnected(&self, id: ControllerId) {
-        if let Ok(mut s) = self.sticks.lock() {
-            s.release_all_for(id);
-        }
+    pub fn on_axis_motion(&mut self, id: ControllerId, axis: CtrlAxis, value: f32) {
+        self.sticks.borrow_mut().update_axis(id, axis, value);
     }
 
-    pub fn on_tick(&self) -> Vec<Action> {
-        let bindings = self.get_stick_bindings();
-        match self.sticks.lock() {
-            Ok(mut s) => s.on_tick(&bindings),
-            Err(_) => vec![],
-        }
+    pub fn on_controller_disconnected(&mut self, id: ControllerId) {
+        self.sticks.borrow_mut().release_all_for(id);
+    }
+
+    pub fn on_tick(&mut self) -> Vec<Action> {
+        let bindings_arc = self.get_stick_bindings_arc();
+        let bindings_ref = bindings_arc.as_deref();
+        self.sticks.borrow_mut().on_tick(bindings_ref)
     }
 
     pub fn on_button(
-        &self,
+        &mut self,
         id: ControllerId,
         button: Button,
         phase: ButtonPhase,
     ) -> Vec<Action> {
         print_debug!("handle button - {id} {button:?} {phase:?}");
         let active_app = self.get_active_app();
-        let Some(app_rules) = self.profile.rules.get(&active_app).cloned() else {
+        let Some(app_rules) = self.profile.rules.get(active_app) else {
             return vec![];
         };
-        let state_ref = self
+        let state = self
             .controllers
-            .get(&id)
+            .get_mut(&id)
             .expect("device must be added before use");
-        let state = state_ref.value();
         let button = state.mapping.get(button);
 
         // snapshot before change
-        let prev_pressed = state.pressed.load();
+        let prev_pressed = state.pressed;
 
         if phase == ButtonPhase::Pressed {
             state.pressed.insert(button);
@@ -186,7 +157,7 @@ impl Gamacros {
         }
 
         // snapshot after change
-        let now_pressed = state.pressed.load();
+        let now_pressed = state.pressed;
 
         let mut candidates: Vec<(ButtonRule, u32)> = vec![];
 

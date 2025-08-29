@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use ahash::AHashMap;
 
 use enigo::Key;
 use gamacros_controller::{Axis as CtrlAxis, ControllerId};
@@ -17,9 +17,10 @@ pub(crate) enum Direction {
 
 #[derive(Default)]
 pub(crate) struct StickProcessor {
-    axes: HashMap<ControllerId, [f32; 6]>,
-    scroll_accum: HashMap<(ControllerId, StickSide), (f32, f32)>,
-    repeat_tasks: HashMap<RepeatTaskId, RepeatTaskState>,
+    axes: AHashMap<ControllerId, [f32; 6]>,
+    scroll_accum: AHashMap<(ControllerId, StickSide), (f32, f32)>,
+    repeat_tasks: AHashMap<RepeatTaskId, RepeatTaskState>,
+    generation: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -37,17 +38,18 @@ struct RepeatTaskId {
 }
 
 struct RepeatTaskState {
-    key: KeyCombo,
+    key: Key,
     fire_on_activate: bool,
     initial_delay_ms: u64,
     interval_ms: u64,
     last_fire: std::time::Instant,
     delay_done: bool,
+    last_seen_generation: u64,
 }
 
 struct RepeatReg {
     id: RepeatTaskId,
-    key: KeyCombo,
+    key: Key,
     fire_on_activate: bool,
     initial_delay_ms: u64,
     interval_ms: u64,
@@ -56,13 +58,13 @@ struct RepeatReg {
 enum StepperMode { Volume, Brightness }
 
 impl StepperMode {
-    fn key_for(&self, positive: bool) -> KeyCombo {
+    fn key_for(&self, positive: bool) -> Key {
         match self {
             StepperMode::Volume => {
-                if positive { KeyCombo::from_key(Key::VolumeUp) } else { KeyCombo::from_key(Key::VolumeDown) }
+                if positive { Key::VolumeUp } else { Key::VolumeDown }
             }
             StepperMode::Brightness => {
-                if positive { KeyCombo::from_key(Key::BrightnessUp) } else { KeyCombo::from_key(Key::BrightnessDown) }
+                if positive { Key::BrightnessUp } else { Key::BrightnessDown }
             }
         }
     }
@@ -171,17 +173,21 @@ impl StickProcessor {
         }
     }
 
-    pub fn get_direction_key(dir: Direction) -> KeyCombo {
+    pub fn get_direction_key(dir: Direction) -> Key {
         match dir {
-            Direction::Up => KeyCombo::from_key(Key::UpArrow),
-            Direction::Down => KeyCombo::from_key(Key::DownArrow),
-            Direction::Left => KeyCombo::from_key(Key::LeftArrow),
-            Direction::Right => KeyCombo::from_key(Key::RightArrow),
+            Direction::Up => Key::UpArrow,
+            Direction::Down => Key::DownArrow,
+            Direction::Left => Key::LeftArrow,
+            Direction::Right => Key::RightArrow,
         }
     }
 
-    pub fn on_tick(&mut self, bindings: &Option<StickRules>) -> Vec<Action> {
+    pub fn on_tick(&mut self, bindings: Option<&StickRules>) -> Vec<Action> {
         let mut out: Vec<Action> = Vec::new();
+        // Early exit when idle
+        if self.axes.is_empty() && self.repeat_tasks.is_empty() {
+            return out;
+        }
         let Some(bindings) = bindings else { return out; };
 
         let mut arrow_bindings: Vec<(&StickSide, &ArrowsParams)> = Vec::new();
@@ -200,16 +206,17 @@ impl StickProcessor {
         }
 
         let now = std::time::Instant::now();
-        let mut active: HashSet<RepeatTaskId> = HashSet::new();
+        // bump generation for this tick
+        self.generation = self.generation.wrapping_add(1);
 
         if !arrow_bindings.is_empty() {
-            self.tick_arrows(now, &mut out, &mut active, &arrow_bindings);
+            self.tick_arrows(now, &mut out, &arrow_bindings);
         }
         if !volume_bindings.is_empty() {
-            self.tick_volume(now, &mut out, &mut active, &volume_bindings);
+            self.tick_volume(now, &mut out, &volume_bindings);
         }
         if !brightness_bindings.is_empty() {
-            self.tick_brightness(now, &mut out, &mut active, &brightness_bindings);
+            self.tick_brightness(now, &mut out, &brightness_bindings);
         }
         if !mouse_bindings.is_empty() {
             self.tick_mouse(&mut out, &mouse_bindings);
@@ -219,12 +226,12 @@ impl StickProcessor {
         }
 
         self.repeater_drain_due(now, &mut out);
-        self.repeater_cleanup_inactive(&active);
+        self.repeater_cleanup_inactive();
 
         out
     }
 
-    fn tick_arrows(&mut self, now: std::time::Instant, out: &mut Vec<Action>, active: &mut HashSet<RepeatTaskId>, arrow_bindings: &[(&StickSide, &ArrowsParams)]) {
+    fn tick_arrows(&mut self, now: std::time::Instant, out: &mut Vec<Action>, arrow_bindings: &[(&StickSide, &ArrowsParams)]) {
         let mut regs: Vec<RepeatReg> = Vec::new();
         for (id, axes_arr) in self.axes.iter() {
             let id = *id;
@@ -232,12 +239,12 @@ impl StickProcessor {
             for (side, params) in arrow_bindings.iter() {
                 let (x0, y0) = Self::axes_for_side(axes, side);
                 let (x, y) = Self::invert_xy(x0, y0, params.invert_x, !params.invert_y);
-                let mag = Self::magnitude2d(x, y);
-                let new_dir = if mag < params.deadzone { None } else { Self::quantize_direction(x, y) };
+                let mag2 = x * x + y * y;
+                let dead2 = params.deadzone * params.deadzone;
+                let new_dir = if mag2 < dead2 { None } else { Self::quantize_direction(x, y) };
                 if let Some(dir) = new_dir {
                     let task_id = RepeatTaskId { controller: id, side: **side, kind: RepeatKind::Arrow(dir) };
                     let key = Self::get_direction_key(dir);
-                    active.insert(task_id);
                     regs.push(RepeatReg { id: task_id, key, fire_on_activate: true, initial_delay_ms: params.repeat_delay_ms, interval_ms: params.repeat_interval_ms });
                 }
             }
@@ -247,19 +254,18 @@ impl StickProcessor {
         }
     }
 
-    fn tick_volume(&mut self, now: std::time::Instant, out: &mut Vec<Action>, active: &mut HashSet<RepeatTaskId>, bindings: &[(&StickSide, &StepperParams)]) {
-        self.tick_stepper(now, out, active, bindings, StepperMode::Volume);
+    fn tick_volume(&mut self, now: std::time::Instant, out: &mut Vec<Action>, bindings: &[(&StickSide, &StepperParams)]) {
+        self.tick_stepper(now, out, bindings, StepperMode::Volume);
     }
 
-    fn tick_brightness(&mut self, now: std::time::Instant, out: &mut Vec<Action>, active: &mut HashSet<RepeatTaskId>, bindings: &[(&StickSide, &StepperParams)]) {
-        self.tick_stepper(now, out, active, bindings, StepperMode::Brightness);
+    fn tick_brightness(&mut self, now: std::time::Instant, out: &mut Vec<Action>, bindings: &[(&StickSide, &StepperParams)]) {
+        self.tick_stepper(now, out, bindings, StepperMode::Brightness);
     }
 
     fn tick_stepper(
         &mut self,
         now: std::time::Instant,
         out: &mut Vec<Action>,
-        active: &mut HashSet<RepeatTaskId>,
         bindings: &[(&StickSide, &StepperParams)],
         mode: StepperMode,
     ) {
@@ -280,7 +286,6 @@ impl StickProcessor {
                 let key = mode.key_for(positive);
                 let kind = mode.kind_for(params.axis, positive);
                 let task_id = RepeatTaskId { controller: cid, side: **side, kind };
-                active.insert(task_id);
                 regs.push(RepeatReg { id: task_id, key, fire_on_activate: true, initial_delay_ms: 0, interval_ms: interval_ms as u64 });
             }
         }
@@ -294,27 +299,27 @@ impl StickProcessor {
         reg: RepeatReg,
         now: std::time::Instant,
     ) -> Option<Action> {
-        use std::collections::hash_map::Entry;
-        match self.repeat_tasks.entry(reg.id) {
-            Entry::Occupied(mut e) => {
-                let st = e.get_mut();
+        match self.repeat_tasks.get_mut(&reg.id) {
+            Some(st) => {
                 st.key = reg.key;
                 st.interval_ms = reg.interval_ms;
                 st.initial_delay_ms = reg.initial_delay_ms;
                 st.fire_on_activate = reg.fire_on_activate;
+                st.last_seen_generation = self.generation;
                 None
             }
-            Entry::Vacant(v) => {
+            None => {
                 let st = RepeatTaskState {
-                    key: reg.key.clone(),
+                    key: reg.key,
                     fire_on_activate: reg.fire_on_activate,
                     initial_delay_ms: reg.initial_delay_ms,
                     interval_ms: reg.interval_ms,
                     last_fire: now,
                     delay_done: reg.initial_delay_ms == 0,
+                    last_seen_generation: self.generation,
                 };
-                v.insert(st);
-                if reg.fire_on_activate { Some(Action::KeyTap(reg.key)) } else { None }
+                self.repeat_tasks.insert(reg.id, st);
+                if reg.fire_on_activate { Some(Action::KeyTap(KeyCombo::from_key(reg.key))) } else { None }
             }
         }
     }
@@ -325,15 +330,16 @@ impl StickProcessor {
             if due_ms == 0 { continue; }
             let elapsed = now.duration_since(st.last_fire).as_millis() as u64;
             if elapsed >= due_ms {
-                out.push(Action::KeyTap(st.key.clone()));
+                out.push(Action::KeyTap(KeyCombo::from_key(st.key)));
                 st.last_fire = now;
                 st.delay_done = true;
             }
         }
     }
 
-    fn repeater_cleanup_inactive(&mut self, active: &HashSet<RepeatTaskId>) {
-        self.repeat_tasks.retain(|id, _| active.contains(id));
+    fn repeater_cleanup_inactive(&mut self) {
+        let gen = self.generation;
+        self.repeat_tasks.retain(|_, st| st.last_seen_generation == gen);
     }
 
     fn tick_mouse(&mut self, out: &mut Vec<Action>, bindings: &[(&StickSide, &MouseParams)]) {
@@ -368,7 +374,7 @@ impl StickProcessor {
                 let (mut x, y) = Self::invert_xy(x0, y0, params.invert_x, !params.invert_y);
                 if !params.horizontal { x = 0.0; }
                 let mag_raw = x.abs().max(y.abs());
-                if Self::normalize_after_deadzone(mag_raw, params.deadzone) <= 0.0 { continue; }
+                if mag_raw <= params.deadzone { continue; }
                 let dt_s = 0.1;
                 let accum = self.scroll_accum.entry((cid, **side)).or_insert((0.0_f32, 0.0_f32));
                 accum.0 += params.speed_lines_s * x * dt_s;

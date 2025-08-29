@@ -25,3 +25,4 @@ chrono = { workspace = true }
 log = "0.4.26"
 colored = "3.0.0"
 fern = "0.6.1"
+ahash = "0.8"

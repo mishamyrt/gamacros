@@ -58,14 +58,21 @@ fn main() {
     // We'll bridge its std::mpsc receiver to crossbeam.
     let (monitor, activity_std_rx) = Monitor::new();
     let (activity_tx, activity_rx) = crossbeam_channel::unbounded::<ActivityEvent>();
-    std::thread::spawn(move || {
-        while let Ok(ev) = activity_std_rx.recv() {
-            let _ = activity_tx.send(ev);
-        }
-    });
+    std::thread::Builder::new()
+        .name("activity-bridge".into())
+        .stack_size(256 * 1024)
+        .spawn(move || {
+            while let Ok(ev) = activity_std_rx.recv() {
+                let _ = activity_tx.send(ev);
+            }
+        })
+        .expect("failed to spawn activity bridge thread");
 
     // Run the main event loop in a background thread while the main thread runs the monitor loop.
-    let event_loop = std::thread::spawn(move || {
+    let event_loop = std::thread::Builder::new()
+        .name("event-loop".into())
+        .stack_size(512 * 1024)
+        .spawn(move || {
         let manager =
             ControllerManager::new().expect("failed to start controller manager");
         let rx = manager.subscribe();
@@ -75,7 +82,7 @@ fn main() {
 
         // TODO: add file watch and hot-reload.
         let profile = load_profile();
-        let gamacros = Gamacros::new(profile);
+        let mut gamacros = Gamacros::new(profile);
         print_info!(
             "gamacrosd started. Listening for controller and activity events."
         );
@@ -87,11 +94,7 @@ fn main() {
                 recv(activity_rx) -> msg => {
                     match msg {
                         Ok(ActivityEvent::AppChange(bundle_id)) => {
-                            if let Err(e) = gamacros.set_active_app(&bundle_id) {
-                                print_error!("failed to set active app: {e}");
-                                break;
-                            }
-                            // Stick state is invalidated inside Gamacros::set_active_app
+                            gamacros.set_active_app(&bundle_id)
                         }
                         Ok(_) => {}
                         Err(_) => {
@@ -108,15 +111,10 @@ fn main() {
                                 continue;
                             }
 
-                            if let Err(e) = gamacros.add_controller(info) {
-                                print_error!("failed to add controller: {e}");
-                            }
+                            gamacros.add_controller(info)
                         }
                         Ok(ControllerEvent::Disconnected(id)) => {
-                            if let Err(e) = gamacros.remove_controller(id) {
-                                print_error!("failed to remove device: {e}");
-                                break;
-                            }
+                            gamacros.remove_controller(id);
                             gamacros.on_controller_disconnected(id);
                         }
                         Ok(ControllerEvent::ButtonPressed { id, button }) => {
@@ -142,7 +140,7 @@ fn main() {
                 }
             }
         }
-    });
+    }).expect("failed to spawn event loop thread");
 
     // Start monitoring on the main thread (blocks until error/exit)
     if let Err(e) = monitor.start_listening() {

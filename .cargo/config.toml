@@ -1,0 +1,7 @@
+[target.aarch64-apple-darwin]
+rustflags = [
+  "-C", "link-arg=-Wl,-dead_strip",
+  "-C", "link-arg=-Wl,-dead_strip_dylibs",
+  "-C", "target-cpu=native",
+  "-C", "link-arg=-L/opt/homebrew/lib",
+]
