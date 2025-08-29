@@ -36,10 +36,10 @@ impl Performer {
     }
 
     pub fn scroll_x(&mut self, value: i32) -> InputResult<()> {
-        self.enigo.scroll(value, Axis::Horizontal)
+        self.enigo.smooth_scroll(value, Axis::Horizontal)
     }
 
     pub fn scroll_y(&mut self, value: i32) -> InputResult<()> {
-        self.enigo.scroll(value, Axis::Vertical)
+        self.enigo.smooth_scroll(value, Axis::Vertical)
     }
 }

@@ -196,7 +196,7 @@ fn parse_stick_mode(raw: ProfileV1Stick) -> Result<StickMode, ProfileError> {
         "scroll" => {
             let params = ScrollParams {
                 deadzone,
-                speed_lines_s: raw.speed_lines_s.unwrap_or(60.0),
+                speed_lines_s: raw.speed_lines_s.unwrap_or(100.0),
                 horizontal: raw.horizontal.unwrap_or(false),
                 invert_x: raw.invert_x.unwrap_or(false),
                 invert_y: raw.invert_y.unwrap_or(false),

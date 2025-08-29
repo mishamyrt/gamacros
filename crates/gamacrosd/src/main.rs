@@ -299,7 +299,7 @@ fn process_scroll(
         if mag <= 0.0 {
             continue;
         }
-        let dt_s = 0.010;
+        let dt_s = 0.1;
         let mut accum = engine
             .scroll_accum
             .entry((cid, **side))
