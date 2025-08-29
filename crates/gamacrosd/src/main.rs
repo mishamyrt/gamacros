@@ -267,8 +267,15 @@ fn process_mouse_move(
             continue;
         }
         // normalize after deadzone to avoid drift
-        let mag = normalize_after_deadzone(mag_raw, params.deadzone)
-            .powf(params.gamma.max(0.1));
+        let base = normalize_after_deadzone(mag_raw, params.deadzone);
+        let gamma = params.gamma.max(0.1);
+        let mag = if (gamma - 1.0).abs() < 1e-6 {
+            base
+        } else if (gamma - 2.0).abs() < 1e-6 {
+            base * base
+        } else {
+            base.powf(gamma)
+        };
         if mag <= 0.0 {
             continue;
         }
