@@ -9,8 +9,8 @@ use colored::Colorize;
 use crossbeam_channel::{select, unbounded};
 use fern::{Dispatch};
 
-use gamacros_controller::{ControllerEvent, ControllerManager};
-use gamacros_keypress::Performer;
+use gamacros_gamepad::{ControllerEvent, ControllerManager};
+use gamacros_control::Performer;
 use gamacros_profile::{parse_profile, ButtonPhase, Profile};
 use gamacros_activity::{Monitor, Event as ActivityEvent, request_stop};
 

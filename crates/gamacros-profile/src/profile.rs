@@ -2,8 +2,8 @@ use core::str;
 use std::collections::HashMap;
 
 use gamacros_bit_mask::Bitmask;
-use gamacros_controller::Button;
-use gamacros_keypress::KeyCombo;
+use gamacros_gamepad::Button;
+use gamacros_control::KeyCombo;
 
 use crate::ProfileError;
 

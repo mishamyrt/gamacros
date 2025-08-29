@@ -6,9 +6,9 @@ use colored::Colorize;
 
 use crate::{print_debug, print_info, stick::StickProcessor};
 
-use gamacros_keypress::KeyCombo;
+use gamacros_control::KeyCombo;
 use gamacros_bit_mask::Bitmask;
-use gamacros_controller::{Button, ControllerId, ControllerInfo, Axis as CtrlAxis};
+use gamacros_gamepad::{Button, ControllerId, ControllerInfo, Axis as CtrlAxis};
 use gamacros_profile::{ButtonPhase, ButtonRule, Profile, StickRules};
 
 #[derive(Debug, Clone)]

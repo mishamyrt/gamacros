@@ -14,6 +14,6 @@ license = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_yaml = { workspace = true }
 thiserror = { workspace = true }
-gamacros-keypress = { workspace = true }
-gamacros-controller = { workspace = true }
+gamacros-control = { workspace = true }
+gamacros-gamepad = { workspace = true }
 gamacros-bit-mask = { workspace = true }

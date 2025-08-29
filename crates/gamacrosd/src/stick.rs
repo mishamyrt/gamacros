@@ -1,8 +1,8 @@
 use ahash::AHashMap;
 
 use enigo::Key;
-use gamacros_controller::{Axis as CtrlAxis, ControllerId};
-use gamacros_keypress::KeyCombo;
+use gamacros_gamepad::{Axis as CtrlAxis, ControllerId};
+use gamacros_control::KeyCombo;
 use gamacros_profile::{ArrowsParams, Axis as ProfileAxis, MouseParams, ScrollParams, StepperParams, StickMode, StickRules, StickSide};
 
 use crate::gamacros::Action;

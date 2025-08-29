@@ -1,5 +1,5 @@
 [package]
-name = "gamacros-controller"
+name = "gamacros-gamepad"
 version = "0.0.0"
 publish = false
 authors = { workspace = true }

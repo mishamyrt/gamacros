@@ -1,7 +1,8 @@
 [workspace]
 members = [
-  "crates/gamacros-controller",
   "crates/gamacrosd",
+  "crates/gamacros-gamepad",
+  "crates/gamacros-control",
   "crates/gamacros-profile",
   "crates/gamacros-bit/derive",
   "crates/gamacros-bit/mask",
@@ -19,8 +20,8 @@ license = "MIT"
 
 [workspace.dependencies]
 gamacrosd = { path = "crates/gamacrosd" }
-gamacros-keypress = { path = "crates/gamacros-keypress" }
-gamacros-controller = { path = "crates/gamacros-controller" }
+gamacros-control = { path = "crates/gamacros-control" }
+gamacros-gamepad = { path = "crates/gamacros-gamepad" }
 gamacros-activity = { path = "crates/gamacros-activity" }
 gamacros-profile = { path = "crates/gamacros-profile" }
 gamacros-bit-derive = { path = "crates/gamacros-bit/derive" }

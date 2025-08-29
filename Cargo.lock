@@ -372,7 +372,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "gamacros-controller"
+name = "gamacros-control"
+version = "0.0.0"
+dependencies = [
+ "enigo",
+ "serde",
+]
+
+[[package]]
+name = "gamacros-gamepad"
 version = "0.0.0"
 dependencies = [
  "crossbeam-channel",
@@ -383,20 +391,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "gamacros-keypress"
-version = "0.0.0"
-dependencies = [
- "enigo",
- "serde",
-]
-
-[[package]]
 name = "gamacros-profile"
 version = "0.0.0"
 dependencies = [
  "gamacros-bit-mask",
- "gamacros-controller",
- "gamacros-keypress",
+ "gamacros-control",
+ "gamacros-gamepad",
  "serde",
  "serde_yaml",
  "thiserror",
@@ -416,8 +416,8 @@ dependencies = [
  "fern",
  "gamacros-activity",
  "gamacros-bit-mask",
- "gamacros-controller",
- "gamacros-keypress",
+ "gamacros-control",
+ "gamacros-gamepad",
  "gamacros-profile",
  "log",
  "thiserror",

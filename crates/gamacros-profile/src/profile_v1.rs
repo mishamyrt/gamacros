@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use gamacros_controller::Button;
-use gamacros_keypress::KeyCombo;
+use gamacros_gamepad::Button;
+use gamacros_control::KeyCombo;
 use serde::Deserialize;
 
 use crate::{
