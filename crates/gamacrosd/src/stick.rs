@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use enigo::Key;
 use gamacros_controller::{Axis as CtrlAxis, ControllerId};
@@ -18,11 +18,61 @@ pub(crate) enum Direction {
 #[derive(Default)]
 pub(crate) struct StickProcessor {
     axes: HashMap<ControllerId, [f32; 6]>,
-    last_step: HashMap<(ControllerId, StickSide, CtrlAxis), std::time::Instant>,
-    arrows_pressed: HashMap<(ControllerId, StickSide), Option<Direction>>, // None for deadzone
-    arrows_last: HashMap<(ControllerId, StickSide), std::time::Instant>,
-    arrows_delay_done: HashMap<(ControllerId, StickSide), bool>,
     scroll_accum: HashMap<(ControllerId, StickSide), (f32, f32)>,
+    repeat_tasks: HashMap<RepeatTaskId, RepeatTaskState>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum RepeatKind {
+    Arrow(Direction),
+    Volume { axis: ProfileAxis, positive: bool },
+    Brightness { axis: ProfileAxis, positive: bool },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct RepeatTaskId {
+    controller: ControllerId,
+    side: StickSide,
+    kind: RepeatKind,
+}
+
+struct RepeatTaskState {
+    key: KeyCombo,
+    fire_on_activate: bool,
+    initial_delay_ms: u64,
+    interval_ms: u64,
+    last_fire: std::time::Instant,
+    delay_done: bool,
+}
+
+struct RepeatReg {
+    id: RepeatTaskId,
+    key: KeyCombo,
+    fire_on_activate: bool,
+    initial_delay_ms: u64,
+    interval_ms: u64,
+}
+
+enum StepperMode { Volume, Brightness }
+
+impl StepperMode {
+    fn key_for(&self, positive: bool) -> KeyCombo {
+        match self {
+            StepperMode::Volume => {
+                if positive { KeyCombo::from_key(Key::VolumeUp) } else { KeyCombo::from_key(Key::VolumeDown) }
+            }
+            StepperMode::Brightness => {
+                if positive { KeyCombo::from_key(Key::BrightnessUp) } else { KeyCombo::from_key(Key::BrightnessDown) }
+            }
+        }
+    }
+
+    fn kind_for(&self, axis: ProfileAxis, positive: bool) -> RepeatKind {
+        match self {
+            StepperMode::Volume => RepeatKind::Volume { axis, positive },
+            StepperMode::Brightness => RepeatKind::Brightness { axis, positive },
+        }
+    }
 }
 
 impl StickProcessor {
@@ -48,23 +98,18 @@ impl StickProcessor {
     }
 
     pub fn release_all_for(&mut self, id: ControllerId) {
-        self.arrows_pressed.retain(|(cid, _), _| *cid != id);
-        self.last_step.retain(|(cid, _, _), _| *cid != id);
-        self.arrows_last.retain(|(cid, _), _| *cid != id);
-        self.arrows_delay_done.retain(|(cid, _), _| *cid != id);
         self.scroll_accum.retain(|(cid, _), _| *cid != id);
+        self.repeat_tasks.retain(|task_id, _| task_id.controller != id);
         self.axes.remove(&id);
     }
 
     pub fn release_all_arrows(&mut self) {
-        self.arrows_pressed.clear();
-        self.arrows_last.clear();
-        self.arrows_delay_done.clear();
+        self.repeat_tasks
+            .retain(|task_id, _| matches!(task_id.kind, RepeatKind::Volume { .. } | RepeatKind::Brightness { .. }));
     }
 
     pub fn on_app_change(&mut self) {
         self.release_all_arrows();
-        self.last_step.clear();
         self.scroll_accum.clear();
     }
 
@@ -154,14 +199,17 @@ impl StickProcessor {
             }
         }
 
+        let now = std::time::Instant::now();
+        let mut active: HashSet<RepeatTaskId> = HashSet::new();
+
         if !arrow_bindings.is_empty() {
-            self.tick_arrows(&mut out, &arrow_bindings);
+            self.tick_arrows(now, &mut out, &mut active, &arrow_bindings);
         }
         if !volume_bindings.is_empty() {
-            self.tick_volume(&mut out, &volume_bindings);
+            self.tick_volume(now, &mut out, &mut active, &volume_bindings);
         }
         if !brightness_bindings.is_empty() {
-            self.tick_brightness(&mut out, &brightness_bindings);
+            self.tick_brightness(now, &mut out, &mut active, &brightness_bindings);
         }
         if !mouse_bindings.is_empty() {
             self.tick_mouse(&mut out, &mouse_bindings);
@@ -170,10 +218,14 @@ impl StickProcessor {
             self.tick_scroll(&mut out, &scroll_bindings);
         }
 
+        self.repeater_drain_due(now, &mut out);
+        self.repeater_cleanup_inactive(&active);
+
         out
     }
 
-    fn tick_arrows(&mut self, out: &mut Vec<Action>, arrow_bindings: &[(&StickSide, &ArrowsParams)]) {
+    fn tick_arrows(&mut self, now: std::time::Instant, out: &mut Vec<Action>, active: &mut HashSet<RepeatTaskId>, arrow_bindings: &[(&StickSide, &ArrowsParams)]) {
+        let mut regs: Vec<RepeatReg> = Vec::new();
         for (id, axes_arr) in self.axes.iter() {
             let id = *id;
             let axes = *axes_arr;
@@ -182,43 +234,36 @@ impl StickProcessor {
                 let (x, y) = Self::invert_xy(x0, y0, params.invert_x, !params.invert_y);
                 let mag = Self::magnitude2d(x, y);
                 let new_dir = if mag < params.deadzone { None } else { Self::quantize_direction(x, y) };
-                let key = (id, **side);
-                let prev = self.arrows_pressed.get(&key).copied().unwrap_or(None);
-
-                if prev != new_dir {
-                    self.arrows_pressed.insert(key, new_dir);
-                    if let Some(dir) = new_dir {
-                        out.push(Action::KeyTap(Self::get_direction_key(dir)));
-                        self.arrows_delay_done.insert(key, false);
-                        self.arrows_last.insert(key, std::time::Instant::now());
-                    } else {
-                        self.arrows_delay_done.remove(&key);
-                        self.arrows_last.remove(&key);
-                    }
-                    continue;
-                }
-
                 if let Some(dir) = new_dir {
-                    let now = std::time::Instant::now();
-                    let last = self.arrows_last.entry(key).or_insert(now);
-                    let delay_done = self.arrows_delay_done.entry(key).or_insert(false);
-                    let elapsed = now.duration_since(*last);
-                    if !*delay_done {
-                        if elapsed.as_millis() as u64 >= params.repeat_delay_ms {
-                            out.push(Action::KeyTap(Self::get_direction_key(dir)));
-                            *last = now;
-                            *delay_done = true;
-                        }
-                    } else if elapsed.as_millis() as u64 >= params.repeat_interval_ms {
-                        out.push(Action::KeyTap(Self::get_direction_key(dir)));
-                        *last = now;
-                    }
+                    let task_id = RepeatTaskId { controller: id, side: **side, kind: RepeatKind::Arrow(dir) };
+                    let key = Self::get_direction_key(dir);
+                    active.insert(task_id);
+                    regs.push(RepeatReg { id: task_id, key, fire_on_activate: true, initial_delay_ms: params.repeat_delay_ms, interval_ms: params.repeat_interval_ms });
                 }
             }
         }
+        for reg in regs.into_iter() {
+            if let Some(a) = self.repeater_register(reg, now) { out.push(a); }
+        }
     }
 
-    fn tick_volume(&mut self, out: &mut Vec<Action>, bindings: &[(&StickSide, &StepperParams)]) {
+    fn tick_volume(&mut self, now: std::time::Instant, out: &mut Vec<Action>, active: &mut HashSet<RepeatTaskId>, bindings: &[(&StickSide, &StepperParams)]) {
+        self.tick_stepper(now, out, active, bindings, StepperMode::Volume);
+    }
+
+    fn tick_brightness(&mut self, now: std::time::Instant, out: &mut Vec<Action>, active: &mut HashSet<RepeatTaskId>, bindings: &[(&StickSide, &StepperParams)]) {
+        self.tick_stepper(now, out, active, bindings, StepperMode::Brightness);
+    }
+
+    fn tick_stepper(
+        &mut self,
+        now: std::time::Instant,
+        out: &mut Vec<Action>,
+        active: &mut HashSet<RepeatTaskId>,
+        bindings: &[(&StickSide, &StepperParams)],
+        mode: StepperMode,
+    ) {
+        let mut regs: Vec<RepeatReg> = Vec::new();
         for (side, params) in bindings.iter() {
             for (cid, axes_arr) in self.axes.iter() {
                 let cid = *cid;
@@ -231,47 +276,64 @@ impl StickProcessor {
                 if mag < params.deadzone { continue; }
                 let t = mag;
                 let interval_ms = (params.max_interval_ms as f32) + (1.0 - t) * ((params.min_interval_ms as f32) - (params.max_interval_ms as f32));
-                let key = if v >= 0.0 { KeyCombo::from_key(Key::VolumeUp) } else { KeyCombo::from_key(Key::VolumeDown) };
-                let now = std::time::Instant::now();
-                let c_axis = match (*side, params.axis) {
-                    (StickSide::Left,  ProfileAxis::X) => CtrlAxis::LeftX,
-                    (StickSide::Left,  ProfileAxis::Y) => CtrlAxis::LeftY,
-                    (StickSide::Right, ProfileAxis::X) => CtrlAxis::RightX,
-                    (StickSide::Right, ProfileAxis::Y) => CtrlAxis::RightY,
+                let positive = v >= 0.0;
+                let key = mode.key_for(positive);
+                let kind = mode.kind_for(params.axis, positive);
+                let task_id = RepeatTaskId { controller: cid, side: **side, kind };
+                active.insert(task_id);
+                regs.push(RepeatReg { id: task_id, key, fire_on_activate: true, initial_delay_ms: 0, interval_ms: interval_ms as u64 });
+            }
+        }
+        for reg in regs.into_iter() {
+            if let Some(a) = self.repeater_register(reg, now) { out.push(a); }
+        }
+    }
+
+    fn repeater_register(
+        &mut self,
+        reg: RepeatReg,
+        now: std::time::Instant,
+    ) -> Option<Action> {
+        use std::collections::hash_map::Entry;
+        match self.repeat_tasks.entry(reg.id) {
+            Entry::Occupied(mut e) => {
+                let st = e.get_mut();
+                st.key = reg.key;
+                st.interval_ms = reg.interval_ms;
+                st.initial_delay_ms = reg.initial_delay_ms;
+                st.fire_on_activate = reg.fire_on_activate;
+                None
+            }
+            Entry::Vacant(v) => {
+                let st = RepeatTaskState {
+                    key: reg.key.clone(),
+                    fire_on_activate: reg.fire_on_activate,
+                    initial_delay_ms: reg.initial_delay_ms,
+                    interval_ms: reg.interval_ms,
+                    last_fire: now,
+                    delay_done: reg.initial_delay_ms == 0,
                 };
-                let last = self.last_step.entry((cid, **side, c_axis)).or_insert(now - std::time::Duration::from_millis(1000));
-                let elapsed = now.duration_since(*last);
-                if elapsed.as_millis() as u64 >= interval_ms as u64 { out.push(Action::KeyTap(key)); *last = now; }
+                v.insert(st);
+                if reg.fire_on_activate { Some(Action::KeyTap(reg.key)) } else { None }
             }
         }
     }
 
-    fn tick_brightness(&mut self, out: &mut Vec<Action>, bindings: &[(&StickSide, &StepperParams)]) {
-        for (side, params) in bindings.iter() {
-            for (cid, axes_arr) in self.axes.iter() {
-                let cid = *cid;
-                let axes = *axes_arr;
-                let (x, y) = (axes[Self::axis_index(CtrlAxis::LeftX)], axes[Self::axis_index(CtrlAxis::LeftY)]);
-                let (rx, ry) = (axes[Self::axis_index(CtrlAxis::RightX)], axes[Self::axis_index(CtrlAxis::RightY)]);
-                let (vx, vy) = match side { StickSide::Left => (x, y), StickSide::Right => (rx, ry) };
-                let v = match params.axis { ProfileAxis::X => vx, ProfileAxis::Y => vy };
-                let mag = v.abs();
-                if mag < params.deadzone { continue; }
-                let t = mag;
-                let interval_ms = (params.max_interval_ms as f32) + (1.0 - t) * ((params.min_interval_ms as f32) - (params.max_interval_ms as f32));
-                let key = if v >= 0.0 { KeyCombo::from_key(Key::BrightnessUp) } else { KeyCombo::from_key(Key::BrightnessDown) };
-                let now = std::time::Instant::now();
-                let c_axis = match (*side, params.axis) {
-                    (StickSide::Left,  ProfileAxis::X) => CtrlAxis::LeftX,
-                    (StickSide::Left,  ProfileAxis::Y) => CtrlAxis::LeftY,
-                    (StickSide::Right, ProfileAxis::X) => CtrlAxis::RightX,
-                    (StickSide::Right, ProfileAxis::Y) => CtrlAxis::RightY,
-                };
-                let last = self.last_step.entry((cid, **side, c_axis)).or_insert(now - std::time::Duration::from_millis(1000));
-                let elapsed = now.duration_since(*last);
-                if elapsed.as_millis() as u64 >= interval_ms as u64 { out.push(Action::KeyTap(key)); *last = now; }
+    fn repeater_drain_due(&mut self, now: std::time::Instant, out: &mut Vec<Action>) {
+        for (_id, st) in self.repeat_tasks.iter_mut() {
+            let due_ms = if st.delay_done { st.interval_ms } else { st.initial_delay_ms };
+            if due_ms == 0 { continue; }
+            let elapsed = now.duration_since(st.last_fire).as_millis() as u64;
+            if elapsed >= due_ms {
+                out.push(Action::KeyTap(st.key.clone()));
+                st.last_fire = now;
+                st.delay_done = true;
             }
         }
+    }
+
+    fn repeater_cleanup_inactive(&mut self, active: &HashSet<RepeatTaskId>) {
+        self.repeat_tasks.retain(|id, _| active.contains(id));
     }
 
     fn tick_mouse(&mut self, out: &mut Vec<Action>, bindings: &[(&StickSide, &MouseParams)]) {
