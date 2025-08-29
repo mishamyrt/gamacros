@@ -55,18 +55,8 @@ fn main() {
     .expect("failed to set Ctrl+C handler");
 
     // Activity monitor must run on the main thread.
-    // We'll bridge its std::mpsc receiver to crossbeam.
+    // We keep its std::mpsc receiver and poll it from the event loop (no bridge thread).
     let (monitor, activity_std_rx) = Monitor::new();
-    let (activity_tx, activity_rx) = crossbeam_channel::unbounded::<ActivityEvent>();
-    std::thread::Builder::new()
-        .name("activity-bridge".into())
-        .stack_size(256 * 1024)
-        .spawn(move || {
-            while let Ok(ev) = activity_std_rx.recv() {
-                let _ = activity_tx.send(ev);
-            }
-        })
-        .expect("failed to spawn activity bridge thread");
 
     // Run the main event loop in a background thread while the main thread runs the monitor loop.
     let event_loop = std::thread::Builder::new()
@@ -90,18 +80,6 @@ fn main() {
             select! {
                 recv(stop_rx) -> _ => {
                     break;
-                }
-                recv(activity_rx) -> msg => {
-                    match msg {
-                        Ok(ActivityEvent::AppChange(bundle_id)) => {
-                            gamacros.set_active_app(&bundle_id)
-                        }
-                        Ok(_) => {}
-                        Err(_) => {
-                            // Activity channel closed; stop the event loop to avoid spin.
-                            break;
-                        }
-                    }
                 }
                 recv(rx) -> msg => {
                     match msg {
@@ -137,6 +115,11 @@ fn main() {
                 recv(ticker) -> _ => {
                     let actions = gamacros.on_tick();
                     for action in actions { apply_action(&mut keypress, &manager, action); }
+                }
+            }
+            while let Ok(msg) = activity_std_rx.try_recv() {
+                if let ActivityEvent::AppChange(bundle_id) = msg {
+                    gamacros.set_active_app(&bundle_id)
                 }
             }
         }
