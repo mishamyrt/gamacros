@@ -110,7 +110,9 @@ impl Gamacros {
             .map(|r| Arc::new(r.sticks.clone()));
     }
 
-    pub fn get_active_app(&self) -> &str { &self.active_app }
+    pub fn get_active_app(&self) -> &str {
+        &self.active_app
+    }
 
     pub fn get_stick_bindings_arc(&self) -> Option<Arc<StickRules>> {
         self.active_stick_rules.clone()
@@ -124,22 +126,23 @@ impl Gamacros {
         self.sticks.borrow_mut().release_all_for(id);
     }
 
-    pub fn on_tick(&mut self) -> Vec<Action> {
+    pub fn on_tick_with<F: FnMut(Action)>(&mut self, sink: F) {
         let bindings_arc = self.get_stick_bindings_arc();
         let bindings_ref = bindings_arc.as_deref();
-        self.sticks.borrow_mut().on_tick(bindings_ref)
+        self.sticks.borrow_mut().on_tick_with(bindings_ref, sink);
     }
 
-    pub fn on_button(
+    pub fn on_button_with<F: FnMut(Action)>(
         &mut self,
         id: ControllerId,
         button: Button,
         phase: ButtonPhase,
-    ) -> Vec<Action> {
+        mut sink: F,
+    ) {
         print_debug!("handle button - {id} {button:?} {phase:?}");
         let active_app = self.get_active_app();
         let Some(app_rules) = self.profile.rules.get(active_app) else {
-            return vec![];
+            return;
         };
         let state = self
             .controllers
@@ -180,11 +183,10 @@ impl Gamacros {
         }
 
         if candidates.is_empty() {
-            return vec![];
+            return;
         }
 
         let max_bits = candidates.iter().map(|(_, b)| *b).max().unwrap_or(0);
-        let mut actions: Vec<Action> = Vec::new();
         for (rule, bits) in candidates.into_iter() {
             if bits != max_bits {
                 continue;
@@ -194,26 +196,24 @@ impl Gamacros {
                     ButtonPhase::Pressed => {
                         if let Some(ms) = rule.vibrate {
                             if self.supports_rumble(id) {
-                                actions.push(Action::Rumble { id, ms: ms as u32 });
+                                sink(Action::Rumble { id, ms: ms as u32 });
                             }
                         }
-                        actions.push(Action::KeyPress(rule.action.clone()));
+                        sink(Action::KeyPress(rule.action.clone()));
                     }
                     ButtonPhase::Released => {
-                        actions.push(Action::KeyRelease(rule.action.clone()));
+                        sink(Action::KeyRelease(rule.action.clone()));
                     }
                 },
                 ButtonPhase::Released => {
                     if let Some(ms) = rule.vibrate {
                         if self.supports_rumble(id) {
-                            actions.push(Action::Rumble { id, ms: ms as u32 });
+                            sink(Action::Rumble { id, ms: ms as u32 });
                         }
                     }
-                    actions.push(Action::KeyTap(rule.action.clone()));
+                    sink(Action::KeyTap(rule.action.clone()));
                 }
             }
         }
-
-        actions
     }
 }

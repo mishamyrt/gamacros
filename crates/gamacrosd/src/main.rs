@@ -43,7 +43,7 @@ fn load_profile() -> Profile {
 }
 
 fn main() {
-    setup_logging(true, false);
+    setup_logging(false, false);
 
     // Handle Ctrl+C to exit cleanly
     let (stop_tx, stop_rx) = unbounded::<()>();
@@ -96,12 +96,14 @@ fn main() {
                             gamacros.on_controller_disconnected(id);
                         }
                         Ok(ControllerEvent::ButtonPressed { id, button }) => {
-                            let actions = gamacros.on_button(id, button, ButtonPhase::Pressed);
-                            for action in actions { apply_action(&mut keypress, &manager, action); }
+                            gamacros.on_button_with(id, button, ButtonPhase::Pressed, |action| {
+                                apply_action(&mut keypress, &manager, action);
+                            });
                         }
                         Ok(ControllerEvent::ButtonReleased { id, button }) => {
-                            let actions = gamacros.on_button(id, button, ButtonPhase::Released);
-                            for action in actions { apply_action(&mut keypress, &manager, action); }
+                            gamacros.on_button_with(id, button, ButtonPhase::Released, |action| {
+                                apply_action(&mut keypress, &manager, action);
+                            });
                         }
                         Ok(ControllerEvent::AxisMotion { id, axis, value }) => {
                             gamacros.on_axis_motion(id, axis, value);
@@ -113,8 +115,9 @@ fn main() {
                     }
                 }
                 recv(ticker) -> _ => {
-                    let actions = gamacros.on_tick();
-                    for action in actions { apply_action(&mut keypress, &manager, action); }
+                    gamacros.on_tick_with(|action| {
+                        apply_action(&mut keypress, &manager, action);
+                    });
                 }
             }
             while let Ok(msg) = activity_std_rx.try_recv() {
