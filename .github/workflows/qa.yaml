@@ -20,7 +20,9 @@ jobs:
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: taiki-e/install-action@nextest
       - name: Collect coverage data
-        run: cargo llvm-cov nextest
+        run: |
+          export LIBRARY_PATH="$LIBRARY_PATH:$(brew --prefix)/lib"
+          cargo llvm-cov nextest
 
   code-style:
     name: Code style check
