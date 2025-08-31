@@ -21,16 +21,36 @@ pub enum Action {
     Rumble { id: ControllerId, ms: u32 },
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct ControllerMapping(HashMap<Button, Button>);
+const BUTTON_COUNT: usize = gamacros_gamepad::Button::DPadRight as usize + 1;
+
+#[derive(Debug, Clone)]
+pub struct ControllerMapping([Option<Button>; BUTTON_COUNT]);
+
+impl Default for ControllerMapping {
+    fn default() -> Self {
+        Self([None; BUTTON_COUNT])
+    }
+}
 
 impl ControllerMapping {
     pub fn new(mapping: HashMap<Button, Button>) -> Self {
-        Self(mapping)
+        let mut arr: [Option<Button>; BUTTON_COUNT] = [None; BUTTON_COUNT];
+        for (from, to) in mapping.into_iter() {
+            let idx = from as usize;
+            if idx < BUTTON_COUNT {
+                arr[idx] = Some(to);
+            }
+        }
+        Self(arr)
     }
 
     pub fn get(&self, button: Button) -> Button {
-        self.0.get(&button).cloned().unwrap_or(button)
+        let idx = button as usize;
+        if idx < BUTTON_COUNT {
+            self.0[idx].unwrap_or(button)
+        } else {
+            button
+        }
     }
 }
 
@@ -39,6 +59,7 @@ struct ControllerState {
     mapping: ControllerMapping,
     pressed: Bitmask<Button>,
     rumble: bool,
+    axes: [f32; 6],
 }
 
 pub struct Gamacros {
@@ -47,6 +68,7 @@ pub struct Gamacros {
     controllers: HashMap<ControllerId, ControllerState>,
     sticks: RefCell<StickProcessor>,
     active_stick_rules: Option<Arc<StickRules>>,
+    axes_scratch: Vec<(ControllerId, [f32; 6])>,
 }
 
 impl Gamacros {
@@ -57,6 +79,7 @@ impl Gamacros {
             controllers: HashMap::new(),
             sticks: RefCell::new(StickProcessor::new()),
             active_stick_rules: None,
+            axes_scratch: Vec::new(),
         }
     }
 
@@ -83,6 +106,7 @@ impl Gamacros {
             mapping,
             pressed: Bitmask::empty(),
             rumble: info.supports_rumble,
+            axes: [0.0; 6],
         };
         if self.is_known(info.id) {
             print_debug!("controller already known - id={0}", info.id);
@@ -119,7 +143,10 @@ impl Gamacros {
     }
 
     pub fn on_axis_motion(&mut self, id: ControllerId, axis: CtrlAxis, value: f32) {
-        self.sticks.borrow_mut().update_axis(id, axis, value);
+        let idx = StickProcessor::axis_index(axis);
+        if let Some(st) = self.controllers.get_mut(&id) {
+            st.axes[idx] = value;
+        }
     }
 
     pub fn on_controller_disconnected(&mut self, id: ControllerId) {
@@ -129,7 +156,16 @@ impl Gamacros {
     pub fn on_tick_with<F: FnMut(Action)>(&mut self, sink: F) {
         let bindings_arc = self.get_stick_bindings_arc();
         let bindings_ref = bindings_arc.as_deref();
-        self.sticks.borrow_mut().on_tick_with(bindings_ref, sink);
+        self.axes_scratch.clear();
+        self.axes_scratch.reserve(self.controllers.len());
+        for (id, st) in self.controllers.iter() {
+            self.axes_scratch.push((*id, st.axes));
+        }
+        self.sticks.borrow_mut().on_tick_with(
+            bindings_ref,
+            &self.axes_scratch,
+            sink,
+        );
     }
 
     pub fn on_button_with<F: FnMut(Action)>(

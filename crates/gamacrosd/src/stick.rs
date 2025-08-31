@@ -21,12 +21,23 @@ pub(crate) enum Direction {
 
 #[derive(Default)]
 pub(crate) struct StickProcessor {
-    axes: AHashMap<ControllerId, [f32; 6]>,
-    scroll_accum: AHashMap<(ControllerId, StickSide), (f32, f32)>,
-    repeat_tasks: AHashMap<RepeatTaskId, RepeatTaskState>,
+    controllers: AHashMap<ControllerId, ControllerRepeatState>,
     generation: u64,
     // Reusable scratch buffer to avoid per-tick allocations
     regs: Vec<RepeatReg>,
+}
+
+#[derive(Default)]
+struct ControllerRepeatState {
+    sides: [SideRepeatState; 2],
+}
+
+#[derive(Default)]
+struct SideRepeatState {
+    scroll_accum: (f32, f32),
+    arrows: [Option<RepeatTaskState>; 4],
+    volume: [Option<RepeatTaskState>; 4],
+    brightness: [Option<RepeatTaskState>; 4],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -110,31 +121,52 @@ impl StickProcessor {
         }
     }
 
-    pub fn update_axis(&mut self, id: ControllerId, axis: CtrlAxis, value: f32) {
-        let idx = Self::axis_index(axis);
-        let entry = self.axes.entry(id).or_insert([0.0; 6]);
-        entry[idx] = value;
+    fn side_index(side: &StickSide) -> usize {
+        match side {
+            StickSide::Left => 0,
+            StickSide::Right => 1,
+        }
+    }
+
+    fn dir_index(dir: Direction) -> usize {
+        match dir {
+            Direction::Up => 0,
+            Direction::Down => 1,
+            Direction::Left => 2,
+            Direction::Right => 3,
+        }
+    }
+
+    fn step_slot_index(axis: ProfileAxis, positive: bool) -> usize {
+        match (axis, positive) {
+            (ProfileAxis::X, false) => 0,
+            (ProfileAxis::X, true) => 1,
+            (ProfileAxis::Y, false) => 2,
+            (ProfileAxis::Y, true) => 3,
+        }
     }
 
     pub fn release_all_for(&mut self, id: ControllerId) {
-        self.scroll_accum.retain(|(cid, _), _| *cid != id);
-        self.repeat_tasks
-            .retain(|task_id, _| task_id.controller != id);
-        self.axes.remove(&id);
+        self.controllers.remove(&id);
     }
 
     pub fn release_all_arrows(&mut self) {
-        self.repeat_tasks.retain(|task_id, _| {
-            matches!(
-                task_id.kind,
-                RepeatKind::Volume { .. } | RepeatKind::Brightness { .. }
-            )
-        });
+        for (_cid, state) in self.controllers.iter_mut() {
+            for s in 0..2 {
+                for slot in state.sides[s].arrows.iter_mut() {
+                    *slot = None;
+                }
+            }
+        }
     }
 
     pub fn on_app_change(&mut self) {
         self.release_all_arrows();
-        self.scroll_accum.clear();
+        for (_cid, state) in self.controllers.iter_mut() {
+            for s in 0..2 {
+                state.sides[s].scroll_accum = (0.0, 0.0);
+            }
+        }
     }
 
     pub fn axes_for_side(axes: [f32; 6], side: &StickSide) -> (f32, f32) {
@@ -207,10 +239,11 @@ impl StickProcessor {
     pub fn on_tick_with<F: FnMut(Action)>(
         &mut self,
         bindings: Option<&StickRules>,
+        axes_list: &[(ControllerId, [f32; 6])],
         mut sink: F,
     ) {
         // Early exit when idle
-        if self.axes.is_empty() && self.repeat_tasks.is_empty() {
+        if axes_list.is_empty() && !self.has_active_repeats() {
             return;
         }
         let Some(bindings) = bindings else {
@@ -239,35 +272,48 @@ impl StickProcessor {
         self.generation = self.generation.wrapping_add(1);
 
         if !arrow_bindings.is_empty() {
-            self.tick_arrows(now, &mut sink, &arrow_bindings);
+            self.tick_arrows(now, &mut sink, axes_list, &arrow_bindings);
         }
         if !volume_bindings.is_empty() {
-            self.tick_volume(now, &mut sink, &volume_bindings);
+            self.tick_volume(now, &mut sink, axes_list, &volume_bindings);
         }
         if !brightness_bindings.is_empty() {
-            self.tick_brightness(now, &mut sink, &brightness_bindings);
+            self.tick_brightness(now, &mut sink, axes_list, &brightness_bindings);
         }
         if !mouse_bindings.is_empty() {
-            self.tick_mouse(&mut sink, &mouse_bindings);
+            self.tick_mouse(&mut sink, axes_list, &mouse_bindings);
         }
         if !scroll_bindings.is_empty() {
-            self.tick_scroll(&mut sink, &scroll_bindings);
+            self.tick_scroll(&mut sink, axes_list, &scroll_bindings);
         }
 
         self.repeater_drain_due(now, &mut sink);
         self.repeater_cleanup_inactive();
     }
 
+    fn has_active_repeats(&self) -> bool {
+        for (_cid, ctrl) in self.controllers.iter() {
+            for side in ctrl.sides.iter() {
+                if side.arrows.iter().any(|s| s.is_some())
+                    || side.volume.iter().any(|s| s.is_some())
+                    || side.brightness.iter().any(|s| s.is_some())
+                {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     fn tick_arrows(
         &mut self,
         now: std::time::Instant,
         sink: &mut impl FnMut(Action),
+        axes_list: &[(ControllerId, [f32; 6])],
         arrow_bindings: &[(&StickSide, &ArrowsParams)],
     ) {
         self.regs.clear();
-        for (id, axes_arr) in self.axes.iter() {
-            let id = *id;
-            let axes = *axes_arr;
+        for (id, axes) in axes_list.iter().cloned() {
             for (side, params) in arrow_bindings.iter() {
                 let (x0, y0) = Self::axes_for_side(axes, side);
                 let (x, y) =
@@ -308,32 +354,33 @@ impl StickProcessor {
         &mut self,
         now: std::time::Instant,
         sink: &mut impl FnMut(Action),
+        axes_list: &[(ControllerId, [f32; 6])],
         bindings: &[(&StickSide, &StepperParams)],
     ) {
-        self.tick_stepper(now, sink, bindings, StepperMode::Volume);
+        self.tick_stepper(now, sink, axes_list, bindings, StepperMode::Volume);
     }
 
     fn tick_brightness(
         &mut self,
         now: std::time::Instant,
         sink: &mut impl FnMut(Action),
+        axes_list: &[(ControllerId, [f32; 6])],
         bindings: &[(&StickSide, &StepperParams)],
     ) {
-        self.tick_stepper(now, sink, bindings, StepperMode::Brightness);
+        self.tick_stepper(now, sink, axes_list, bindings, StepperMode::Brightness);
     }
 
     fn tick_stepper(
         &mut self,
         now: std::time::Instant,
         sink: &mut impl FnMut(Action),
+        axes_list: &[(ControllerId, [f32; 6])],
         bindings: &[(&StickSide, &StepperParams)],
         mode: StepperMode,
     ) {
         self.regs.clear();
         for (side, params) in bindings.iter() {
-            for (cid, axes_arr) in self.axes.iter() {
-                let cid = *cid;
-                let axes = *axes_arr;
+            for (cid, axes) in axes_list.iter().cloned() {
                 let (x, y) = (
                     axes[Self::axis_index(CtrlAxis::LeftX)],
                     axes[Self::axis_index(CtrlAxis::LeftY)],
@@ -389,7 +436,27 @@ impl StickProcessor {
         reg: RepeatReg,
         now: std::time::Instant,
     ) -> Option<Action> {
-        match self.repeat_tasks.get_mut(&reg.id) {
+        let cid = reg.id.controller;
+        let side_idx = Self::side_index(&reg.id.side);
+        let ctrl = self.controllers.entry(cid).or_default();
+        let side = &mut ctrl.sides[side_idx];
+
+        let slot: &mut Option<RepeatTaskState> = match reg.id.kind {
+            RepeatKind::Arrow(dir) => {
+                let idx = Self::dir_index(dir);
+                &mut side.arrows[idx]
+            }
+            RepeatKind::Volume { axis, positive } => {
+                let idx = Self::step_slot_index(axis, positive);
+                &mut side.volume[idx]
+            }
+            RepeatKind::Brightness { axis, positive } => {
+                let idx = Self::step_slot_index(axis, positive);
+                &mut side.brightness[idx]
+            }
+        };
+
+        match slot {
             Some(st) => {
                 st.key = reg.key;
                 st.interval_ms = reg.interval_ms;
@@ -408,7 +475,7 @@ impl StickProcessor {
                     delay_done: reg.initial_delay_ms == 0,
                     last_seen_generation: self.generation,
                 };
-                self.repeat_tasks.insert(reg.id, st);
+                *slot = Some(st);
                 if reg.fire_on_activate {
                     Some(Action::KeyTap(Arc::new(KeyCombo::from_key(reg.key))))
                 } else {
@@ -423,38 +490,75 @@ impl StickProcessor {
         now: std::time::Instant,
         sink: &mut impl FnMut(Action),
     ) {
-        for (_id, st) in self.repeat_tasks.iter_mut() {
-            let due_ms = if st.delay_done {
-                st.interval_ms
-            } else {
-                st.initial_delay_ms
-            };
-            if due_ms == 0 {
-                continue;
-            }
-            let elapsed = now.duration_since(st.last_fire).as_millis() as u64;
-            if elapsed >= due_ms {
-                (sink)(Action::KeyTap(Arc::new(KeyCombo::from_key(st.key))));
-                st.last_fire = now;
-                st.delay_done = true;
+        for (_cid, ctrl) in self.controllers.iter_mut() {
+            for side in ctrl.sides.iter_mut() {
+                for slot in side
+                    .arrows
+                    .iter_mut()
+                    .chain(side.volume.iter_mut())
+                    .chain(side.brightness.iter_mut())
+                {
+                    if let Some(st) = slot.as_mut() {
+                        let due_ms = if st.delay_done {
+                            st.interval_ms
+                        } else {
+                            st.initial_delay_ms
+                        };
+                        if due_ms == 0 {
+                            continue;
+                        }
+                        let elapsed =
+                            now.duration_since(st.last_fire).as_millis() as u64;
+                        if elapsed >= due_ms {
+                            (sink)(Action::KeyTap(Arc::new(KeyCombo::from_key(
+                                st.key,
+                            ))));
+                            st.last_fire = now;
+                            st.delay_done = true;
+                        }
+                    }
+                }
             }
         }
     }
 
     fn repeater_cleanup_inactive(&mut self) {
         let gen = self.generation;
-        self.repeat_tasks
-            .retain(|_, st| st.last_seen_generation == gen);
+        for (_cid, ctrl) in self.controllers.iter_mut() {
+            for side in ctrl.sides.iter_mut() {
+                for slot in side.arrows.iter_mut() {
+                    if let Some(st) = slot.as_ref() {
+                        if st.last_seen_generation != gen {
+                            *slot = None;
+                        }
+                    }
+                }
+                for slot in side.volume.iter_mut() {
+                    if let Some(st) = slot.as_ref() {
+                        if st.last_seen_generation != gen {
+                            *slot = None;
+                        }
+                    }
+                }
+                for slot in side.brightness.iter_mut() {
+                    if let Some(st) = slot.as_ref() {
+                        if st.last_seen_generation != gen {
+                            *slot = None;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fn tick_mouse(
         &mut self,
         sink: &mut impl FnMut(Action),
+        axes_list: &[(ControllerId, [f32; 6])],
         bindings: &[(&StickSide, &MouseParams)],
     ) {
         for (side, params) in bindings.iter() {
-            for (_cid, axes_arr) in self.axes.iter() {
-                let axes = *axes_arr;
+            for (_cid, axes) in axes_list.iter().cloned() {
                 let (x0, y0) = Self::axes_for_side(axes, side);
                 let (x, y) =
                     Self::invert_xy(x0, y0, params.invert_x, params.invert_y);
@@ -490,12 +594,11 @@ impl StickProcessor {
     fn tick_scroll(
         &mut self,
         sink: &mut impl FnMut(Action),
+        axes_list: &[(ControllerId, [f32; 6])],
         bindings: &[(&StickSide, &ScrollParams)],
     ) {
         for (side, params) in bindings.iter() {
-            for (cid, axes_arr) in self.axes.iter() {
-                let cid = *cid;
-                let axes = *axes_arr;
+            for (cid, axes) in axes_list.iter().cloned() {
                 let (x0, y0) = Self::axes_for_side(axes, side);
                 let (mut x, y) =
                     Self::invert_xy(x0, y0, params.invert_x, !params.invert_y);
@@ -507,10 +610,10 @@ impl StickProcessor {
                     continue;
                 }
                 let dt_s = 0.1;
-                let accum = self
-                    .scroll_accum
-                    .entry((cid, **side))
-                    .or_insert((0.0_f32, 0.0_f32));
+                let sidx = Self::side_index(side);
+                let accum = &mut self.controllers.entry(cid).or_default().sides
+                    [sidx]
+                    .scroll_accum;
                 accum.0 += params.speed_lines_s * x * dt_s;
                 accum.1 += params.speed_lines_s * y * dt_s;
                 let h = accum.0.round() as i32;
