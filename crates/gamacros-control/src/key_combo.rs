@@ -3,6 +3,7 @@ use enigo::{
     Direction::{Click, Press, Release},
     Enigo, InputResult, Key, Keyboard,
 };
+use smallvec::SmallVec;
 use serde::{
     de::{value::Error as DeError, IntoDeserializer},
     Deserializer,
@@ -16,14 +17,18 @@ pub const ILLUMINATION_DOWN: Key = Key::IlluminationDown;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyCombo {
     pub modifiers: Modifiers,
-    pub keys: Vec<Key>,
+    pub keys: SmallVec<[Key; 4]>,
 }
 
 impl KeyCombo {
     pub fn from_key(key: Key) -> Self {
         Self {
             modifiers: Modifiers::empty(),
-            keys: vec![key],
+            keys: {
+                let mut v: SmallVec<[Key; 4]> = SmallVec::new();
+                v.push(key);
+                v
+            },
         }
     }
 }
@@ -157,7 +162,7 @@ impl<'de> Deserialize<'de> for KeyCombo {
                 E: serde::de::Error,
             {
                 let mut modifiers: Modifiers = Modifiers::empty();
-                let mut keys: Vec<Key> = Vec::new();
+                let mut keys: SmallVec<[Key; 4]> = SmallVec::new();
                 for combo in v.split('+') {
                     let part = combo.trim();
                     match parse_key(part) {
@@ -198,7 +203,7 @@ impl KeyCombo {
             enigo.key(Key::Alt, Press)?;
         }
 
-        for key in self.keys.clone() {
+        for &key in self.keys.iter() {
             enigo.key(key, Click)?;
         }
 

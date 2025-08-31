@@ -6,6 +6,7 @@ use gamacros_control::KeyCombo;
 use gamacros_profile::{ArrowsParams, Axis as ProfileAxis, MouseParams, ScrollParams, StepperParams, StickMode, StickRules, StickSide};
 
 use crate::gamacros::Action;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum Direction {
@@ -319,7 +320,7 @@ impl StickProcessor {
                     last_seen_generation: self.generation,
                 };
                 self.repeat_tasks.insert(reg.id, st);
-                if reg.fire_on_activate { Some(Action::KeyTap(KeyCombo::from_key(reg.key))) } else { None }
+                if reg.fire_on_activate { Some(Action::KeyTap(Arc::new(KeyCombo::from_key(reg.key)))) } else { None }
             }
         }
     }
@@ -330,7 +331,7 @@ impl StickProcessor {
             if due_ms == 0 { continue; }
             let elapsed = now.duration_since(st.last_fire).as_millis() as u64;
             if elapsed >= due_ms {
-                out.push(Action::KeyTap(KeyCombo::from_key(st.key)));
+                out.push(Action::KeyTap(Arc::new(KeyCombo::from_key(st.key))));
                 st.last_fire = now;
                 st.delay_done = true;
             }

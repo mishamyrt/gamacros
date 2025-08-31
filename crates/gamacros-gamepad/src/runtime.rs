@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
 
 use crossbeam_channel::Receiver;
 use sdl2::controller::{Button as SdlButton, GameController, Axis as SdlAxis};
@@ -102,8 +101,8 @@ pub(crate) fn start_runtime_thread(
         }
 
         loop {
-            // Handle SDL events
-            for event in event_pump.poll_iter() {
+            // Wait for an SDL event or timeout to reduce idle CPU usage
+            if let Some(event) = event_pump.wait_event_timeout(10) {
                 match event {
                     Event::ControllerDeviceAdded { which, .. } => {
                         if let Ok(controller) = controller_subsystem.open(which) {
@@ -209,6 +208,92 @@ pub(crate) fn start_runtime_thread(
                     }
                     _ => {}
                 }
+                // Drain any additional queued events quickly
+                for ev in event_pump.poll_iter() {
+                    match ev {
+                        Event::ControllerDeviceAdded { which, .. } => {
+                            if let Ok(controller) = controller_subsystem.open(which) {
+                                let id: ControllerId =
+                                    match joystick_subsystem.open(which) {
+                                        Ok(js) => js.instance_id() as ControllerId,
+                                        Err(_) => which as ControllerId,
+                                    };
+                                let info = ControllerInfo {
+                                    id,
+                                    name: controller.name().to_string(),
+                                    vendor_id: controller.vendor_id().unwrap_or(0),
+                                    product_id: controller.product_id().unwrap_or(0),
+                                    supports_rumble: controller.has_rumble(),
+                                };
+                                controllers.insert(id, controller);
+                                if let Ok(mut map) = inner.controllers_info.write() {
+                                    map.insert(id, info.clone());
+                                }
+                                broadcast(&inner, ControllerEvent::Connected(info));
+                            }
+                        }
+                        Event::ControllerDeviceRemoved { which, .. } => {
+                            let id: ControllerId = which as ControllerId;
+                            controllers.remove(&id);
+                            joysticks.remove(&id);
+                            haptics.remove(&id);
+                            trigger_state.remove(&id);
+                            if let Ok(mut map) = inner.controllers_info.write() {
+                                map.remove(&id);
+                            }
+                            broadcast(&inner, ControllerEvent::Disconnected(id));
+                        }
+                        Event::ControllerButtonDown { which, button, .. } => {
+                            if let Some(btn) = map_sdl_button(button) {
+                                broadcast(
+                                    &inner,
+                                    ControllerEvent::ButtonPressed { id: which as ControllerId, button: btn },
+                                );
+                            }
+                        }
+                        Event::ControllerButtonUp { which, button, .. } => {
+                            if let Some(btn) = map_sdl_button(button) {
+                                broadcast(
+                                    &inner,
+                                    ControllerEvent::ButtonReleased { id: which as ControllerId, button: btn },
+                                );
+                            }
+                        }
+                        Event::ControllerAxisMotion { which, axis, value, .. } => {
+                            const THRESHOLD: i16 = 20000;
+                            let id = which as ControllerId;
+                            let entry = trigger_state.entry(id).or_insert((false, false));
+                            if let Some(mapped) = map_sdl_axis(axis) {
+                                let norm = (value as f32) / (i16::MAX as f32);
+                                broadcast(&inner, ControllerEvent::AxisMotion { id, axis: mapped, value: norm });
+                            }
+                            match axis {
+                                SdlAxis::TriggerLeft => {
+                                    let pressed = value > THRESHOLD;
+                                    if pressed && !entry.0 {
+                                        broadcast(&inner, ControllerEvent::ButtonPressed { id, button: Button::LeftTrigger });
+                                        entry.0 = true;
+                                    } else if !pressed && entry.0 {
+                                        broadcast(&inner, ControllerEvent::ButtonReleased { id, button: Button::LeftTrigger });
+                                        entry.0 = false;
+                                    }
+                                }
+                                SdlAxis::TriggerRight => {
+                                    let pressed = value > THRESHOLD;
+                                    if pressed && !entry.1 {
+                                        broadcast(&inner, ControllerEvent::ButtonPressed { id, button: Button::RightTrigger });
+                                        entry.1 = true;
+                                    } else if !pressed && entry.1 {
+                                        broadcast(&inner, ControllerEvent::ButtonReleased { id, button: Button::RightTrigger });
+                                        entry.1 = false;
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                        _ => {}
+                    }
+                }
             }
 
             // Handle commands
@@ -236,8 +321,6 @@ pub(crate) fn start_runtime_thread(
                     }
                 }
             }
-
-            thread::sleep(Duration::from_millis(10));
         }
     });
 }

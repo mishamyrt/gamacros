@@ -34,20 +34,42 @@ impl AppState {
                 return Err(NSWorkspaceError::GetFrontmostApplication);
             }
 
+            // Prefer bundle identifier; if absent, fall back to localizedName
             let bundle_id: id = msg_send![app, bundleIdentifier];
-            if bundle_id.is_null() {
-                return Err(NSWorkspaceError::GetBundleIdentifier);
+            if !bundle_id.is_null() {
+                let utf8: *const c_char = msg_send![bundle_id, UTF8String];
+                if utf8.is_null() {
+                    return Err(NSWorkspaceError::GetUTF8String);
+                }
+
+                let cstr = std::ffi::CStr::from_ptr(utf8);
+                match cstr.to_str() {
+                    Ok(bundle_str) => {
+                        let event = Event::AppChange(bundle_str.to_string());
+                        if let Err(e) = self.event_tx.send(event) {
+                            return Err(NSWorkspaceError::SendEventError(e));
+                        }
+                        return Ok(());
+                    }
+                    Err(e) => return Err(NSWorkspaceError::ConvertStringError(e)),
+                }
             }
 
-            let utf8: *const c_char = msg_send![bundle_id, UTF8String];
+            // Fallback: use localizedName when bundleIdentifier is unavailable
+            let app_name: id = msg_send![app, localizedName];
+            if app_name.is_null() {
+                return Err(NSWorkspaceError::GetApplicationName);
+            }
+
+            let utf8: *const c_char = msg_send![app_name, UTF8String];
             if utf8.is_null() {
                 return Err(NSWorkspaceError::GetUTF8String);
             }
 
             let cstr = std::ffi::CStr::from_ptr(utf8);
             match cstr.to_str() {
-                Ok(bundle_str) => {
-                    let event = Event::AppChange(bundle_str.to_string());
+                Ok(name_str) => {
+                    let event = Event::AppChange(name_str.to_string());
                     if let Err(e) = self.event_tx.send(event) {
                         return Err(NSWorkspaceError::SendEventError(e));
                     }
@@ -67,6 +89,7 @@ impl AppState {
             let workspace: id = msg_send![class!(NSWorkspace), sharedWorkspace];
             let frontmost_app: id = msg_send![workspace, frontmostApplication];
             if !frontmost_app.is_null() {
+                // Try bundleIdentifier first
                 let bundle_id: id = msg_send![frontmost_app, bundleIdentifier];
                 if !bundle_id.is_null() {
                     let utf8: *const c_char = msg_send![bundle_id, UTF8String];
@@ -76,6 +99,23 @@ impl AppState {
                             if let Err(e) = self
                                 .event_tx
                                 .send(Event::AppChange(bundle_str.to_string()))
+                            {
+                                return Err(NSWorkspaceError::SendEventError(e));
+                            }
+                        }
+                    }
+                }
+
+                // Fallback to localizedName
+                let app_name: id = msg_send![frontmost_app, localizedName];
+                if !app_name.is_null() {
+                    let utf8: *const c_char = msg_send![app_name, UTF8String];
+                    if !utf8.is_null() {
+                        let cstr = std::ffi::CStr::from_ptr(utf8);
+                        if let Ok(name_str) = cstr.to_str() {
+                            if let Err(e) = self
+                                .event_tx
+                                .send(Event::AppChange(name_str.to_string()))
                             {
                                 return Err(NSWorkspaceError::SendEventError(e));
                             }

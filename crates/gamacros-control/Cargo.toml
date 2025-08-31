@@ -13,3 +13,4 @@ license = { workspace = true }
 [dependencies]
 enigo = { workspace = true, features = ["serde", "platform_specific"] }
 serde = { workspace = true, features = ["derive"] }
+smallvec = "1.13"

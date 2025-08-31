@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use gamacros_gamepad::Button;
 use gamacros_control::KeyCombo;
+use std::sync::Arc;
 use serde::Deserialize;
 
 use crate::{
@@ -157,10 +158,12 @@ fn parse_button_rule(raw: ProfileV1ButtonRule) -> Result<ButtonRule, ProfileErro
             )))
         }
     };
-    let action = raw
-        .action
-        .parse::<KeyCombo>()
-        .map_err(ProfileError::KeyParseError)?;
+    let action = Arc::new(
+        raw
+            .action
+            .parse::<KeyCombo>()
+            .map_err(ProfileError::KeyParseError)?,
+    );
 
     Ok(ButtonRule {
         vibrate: raw.vibrate,

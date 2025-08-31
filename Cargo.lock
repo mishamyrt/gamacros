@@ -377,6 +377,7 @@ version = "0.0.0"
 dependencies = [
  "enigo",
  "serde",
+ "smallvec",
 ]
 
 [[package]]

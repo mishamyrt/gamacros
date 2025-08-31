@@ -13,6 +13,8 @@ pub enum NSWorkspaceError {
     GetFrontmostApplication,
     #[error("Failed to get bundle identifier")]
     GetBundleIdentifier,
+    #[error("Failed to get application name")]
+    GetApplicationName,
     #[error("Failed to get UTF8 string")]
     GetUTF8String,
     #[error("Failed to convert string")]

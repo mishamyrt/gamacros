@@ -13,9 +13,9 @@ use gamacros_profile::{ButtonPhase, ButtonRule, Profile, StickRules};
 
 #[derive(Debug, Clone)]
 pub enum Action {
-    KeyPress(KeyCombo),
-    KeyRelease(KeyCombo),
-    KeyTap(KeyCombo),
+    KeyPress(Arc<KeyCombo>),
+    KeyRelease(Arc<KeyCombo>),
+    KeyTap(Arc<KeyCombo>),
     MouseMove { dx: i32, dy: i32 },
     Scroll { h: i32, v: i32 },
     Rumble { id: ControllerId, ms: u32 },
@@ -159,7 +159,7 @@ impl Gamacros {
         // snapshot after change
         let now_pressed = state.pressed;
 
-        let mut candidates: Vec<(ButtonRule, u32)> = vec![];
+        let mut candidates: Vec<(&ButtonRule, u32)> = vec![];
 
         for (target, rule) in app_rules.buttons.iter() {
             let was = prev_pressed.is_superset(target);
@@ -175,7 +175,7 @@ impl Gamacros {
 
             if fire {
                 let bits: u32 = target.count();
-                candidates.push((rule.clone(), bits));
+                candidates.push((rule, bits));
             }
         }
 

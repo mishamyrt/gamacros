@@ -43,7 +43,7 @@ fn load_profile() -> Profile {
 }
 
 fn main() {
-    setup_logging(false, false);
+    setup_logging(true, false);
 
     // Handle Ctrl+C to exit cleanly
     let (stop_tx, stop_rx) = unbounded::<()>();

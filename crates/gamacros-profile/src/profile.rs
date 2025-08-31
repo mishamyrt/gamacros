@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use gamacros_bit_mask::Bitmask;
 use gamacros_gamepad::Button;
 use gamacros_control::KeyCombo;
+use std::sync::Arc;
 
 use crate::ProfileError;
 
@@ -59,7 +60,7 @@ pub struct ControllerParams {
 /// A rule for a gamepad button.
 #[derive(Debug, Clone)]
 pub struct ButtonRule {
-    pub action: KeyCombo,
+    pub action: Arc<KeyCombo>,
     pub when: ButtonPhase,
     pub vibrate: Option<u16>,
 }
