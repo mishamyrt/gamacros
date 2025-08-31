@@ -158,15 +158,25 @@ pub(crate) fn start_runtime_thread(
                             );
                         }
                     }
-                    Event::ControllerAxisMotion { which, axis, value, .. } => {
+                    Event::ControllerAxisMotion {
+                        which, axis, value, ..
+                    } => {
                         const THRESHOLD: i16 = 20000;
                         let id = which as ControllerId;
-                        let entry = trigger_state.entry(id).or_insert((false, false));
+                        let entry =
+                            trigger_state.entry(id).or_insert((false, false));
 
                         // Emit analog event for all axes
                         if let Some(mapped) = map_sdl_axis(axis) {
                             let norm = (value as f32) / (i16::MAX as f32);
-                            broadcast(&inner, ControllerEvent::AxisMotion { id, axis: mapped, value: norm });
+                            broadcast(
+                                &inner,
+                                ControllerEvent::AxisMotion {
+                                    id,
+                                    axis: mapped,
+                                    value: norm,
+                                },
+                            );
                         }
 
                         // Preserve trigger-as-button semantics for compatibility
@@ -176,13 +186,19 @@ pub(crate) fn start_runtime_thread(
                                 if pressed && !entry.0 {
                                     broadcast(
                                         &inner,
-                                        ControllerEvent::ButtonPressed { id, button: Button::LeftTrigger },
+                                        ControllerEvent::ButtonPressed {
+                                            id,
+                                            button: Button::LeftTrigger,
+                                        },
                                     );
                                     entry.0 = true;
                                 } else if !pressed && entry.0 {
                                     broadcast(
                                         &inner,
-                                        ControllerEvent::ButtonReleased { id, button: Button::LeftTrigger },
+                                        ControllerEvent::ButtonReleased {
+                                            id,
+                                            button: Button::LeftTrigger,
+                                        },
                                     );
                                     entry.0 = false;
                                 }
@@ -192,13 +208,19 @@ pub(crate) fn start_runtime_thread(
                                 if pressed && !entry.1 {
                                     broadcast(
                                         &inner,
-                                        ControllerEvent::ButtonPressed { id, button: Button::RightTrigger },
+                                        ControllerEvent::ButtonPressed {
+                                            id,
+                                            button: Button::RightTrigger,
+                                        },
                                     );
                                     entry.1 = true;
                                 } else if !pressed && entry.1 {
                                     broadcast(
                                         &inner,
-                                        ControllerEvent::ButtonReleased { id, button: Button::RightTrigger },
+                                        ControllerEvent::ButtonReleased {
+                                            id,
+                                            button: Button::RightTrigger,
+                                        },
                                     );
                                     entry.1 = false;
                                 }
@@ -212,7 +234,8 @@ pub(crate) fn start_runtime_thread(
                 for ev in event_pump.poll_iter() {
                     match ev {
                         Event::ControllerDeviceAdded { which, .. } => {
-                            if let Ok(controller) = controller_subsystem.open(which) {
+                            if let Ok(controller) = controller_subsystem.open(which)
+                            {
                                 let id: ControllerId =
                                     match joystick_subsystem.open(which) {
                                         Ok(js) => js.instance_id() as ControllerId,
@@ -247,7 +270,10 @@ pub(crate) fn start_runtime_thread(
                             if let Some(btn) = map_sdl_button(button) {
                                 broadcast(
                                     &inner,
-                                    ControllerEvent::ButtonPressed { id: which as ControllerId, button: btn },
+                                    ControllerEvent::ButtonPressed {
+                                        id: which as ControllerId,
+                                        button: btn,
+                                    },
                                 );
                             }
                         }
@@ -255,36 +281,73 @@ pub(crate) fn start_runtime_thread(
                             if let Some(btn) = map_sdl_button(button) {
                                 broadcast(
                                     &inner,
-                                    ControllerEvent::ButtonReleased { id: which as ControllerId, button: btn },
+                                    ControllerEvent::ButtonReleased {
+                                        id: which as ControllerId,
+                                        button: btn,
+                                    },
                                 );
                             }
                         }
-                        Event::ControllerAxisMotion { which, axis, value, .. } => {
+                        Event::ControllerAxisMotion {
+                            which, axis, value, ..
+                        } => {
                             const THRESHOLD: i16 = 20000;
                             let id = which as ControllerId;
-                            let entry = trigger_state.entry(id).or_insert((false, false));
+                            let entry =
+                                trigger_state.entry(id).or_insert((false, false));
                             if let Some(mapped) = map_sdl_axis(axis) {
                                 let norm = (value as f32) / (i16::MAX as f32);
-                                broadcast(&inner, ControllerEvent::AxisMotion { id, axis: mapped, value: norm });
+                                broadcast(
+                                    &inner,
+                                    ControllerEvent::AxisMotion {
+                                        id,
+                                        axis: mapped,
+                                        value: norm,
+                                    },
+                                );
                             }
                             match axis {
                                 SdlAxis::TriggerLeft => {
                                     let pressed = value > THRESHOLD;
                                     if pressed && !entry.0 {
-                                        broadcast(&inner, ControllerEvent::ButtonPressed { id, button: Button::LeftTrigger });
+                                        broadcast(
+                                            &inner,
+                                            ControllerEvent::ButtonPressed {
+                                                id,
+                                                button: Button::LeftTrigger,
+                                            },
+                                        );
                                         entry.0 = true;
                                     } else if !pressed && entry.0 {
-                                        broadcast(&inner, ControllerEvent::ButtonReleased { id, button: Button::LeftTrigger });
+                                        broadcast(
+                                            &inner,
+                                            ControllerEvent::ButtonReleased {
+                                                id,
+                                                button: Button::LeftTrigger,
+                                            },
+                                        );
                                         entry.0 = false;
                                     }
                                 }
                                 SdlAxis::TriggerRight => {
                                     let pressed = value > THRESHOLD;
                                     if pressed && !entry.1 {
-                                        broadcast(&inner, ControllerEvent::ButtonPressed { id, button: Button::RightTrigger });
+                                        broadcast(
+                                            &inner,
+                                            ControllerEvent::ButtonPressed {
+                                                id,
+                                                button: Button::RightTrigger,
+                                            },
+                                        );
                                         entry.1 = true;
                                     } else if !pressed && entry.1 {
-                                        broadcast(&inner, ControllerEvent::ButtonReleased { id, button: Button::RightTrigger });
+                                        broadcast(
+                                            &inner,
+                                            ControllerEvent::ButtonReleased {
+                                                id,
+                                                button: Button::RightTrigger,
+                                            },
+                                        );
                                         entry.1 = false;
                                     }
                                 }

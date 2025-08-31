@@ -159,8 +159,7 @@ fn parse_button_rule(raw: ProfileV1ButtonRule) -> Result<ButtonRule, ProfileErro
         }
     };
     let action = Arc::new(
-        raw
-            .action
+        raw.action
             .parse::<KeyCombo>()
             .map_err(ProfileError::KeyParseError)?,
     );

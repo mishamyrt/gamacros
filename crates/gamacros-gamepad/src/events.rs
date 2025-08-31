@@ -14,7 +14,11 @@ pub enum ControllerEvent {
     /// A logical controller button was released.
     ButtonReleased { id: ControllerId, button: Button },
     /// An analog axis moved; value is normalized to [-1.0, 1.0].
-    AxisMotion { id: ControllerId, axis: Axis, value: f32 },
+    AxisMotion {
+        id: ControllerId,
+        axis: Axis,
+        value: f32,
+    },
 }
 
 /// Receiving end for controller events subscription.
