@@ -1,7 +1,19 @@
 BREW_LIBRARY_PATH := shell('brew --prefix')
 
+set shell := ["zsh", "-cu"]
+
 _sdl2-lib-env:
-  export LIBRARY_PATH="$LIBRARY_PATH:{{BREW_LIBRARY_PATH}}/lib"
+  @echo "Setting up SDL2 library path"
+  @export LIBRARY_PATH="$LIBRARY_PATH:{{BREW_LIBRARY_PATH}}/lib"
+
+# Build
+[group: 'build']
+build: _sdl2-lib-env
+  cargo build --release -p gamacrosd
+
+[group: 'build']
+build-debug: _sdl2-lib-env
+  cargo build -p gamacrosd
 
 # Quality Assurance
 [group: 'qa']
@@ -30,7 +42,7 @@ qa: lint check-formatting test
 [group: 'mem']
 mem-scenario duration='10': _sdl2-lib-env
   #!/usr/bin/env bash
-  set -euo pipefail
+  set -eo pipefail
   cargo build --release -p gamacrosd
   BIN="/Users/mishamyrt/Git/mishamyrt/gamacros/target/release/gamacrosd"
   "$BIN" > /tmp/gamacrosd_mem.log 2>&1 &

@@ -1,0 +1,36 @@
+---
+alwaysApply: true
+description: Use the repository's Just recipes for build, QA, and memory tooling. Prefer `just` over raw cargo where a recipe exists.
+---
+
+### When to use Just
+- Prefer `just` whenever the user asks to build, test, lint, format, run QA, or run memory profiling utilities for `gamacrosd`.
+- Run commands from the workspace root. Assume non-interactive execution and avoid pagers.
+
+### Useful commands
+- **Build**
+  - `just build`: Release build of `gamacrosd` with SDL2 library path prepared.
+  - `just build-debug`: Debug build of `gamacrosd`.
+- **QA**
+  - `just lint`: Run Clippy.
+  - `just check-formatting`: Check Rust formatting.
+  - `just format`: Apply Rust formatting.
+  - `just test`: Run tests via nextest (with SDL2 env prepared).
+  - `just collect-coverage`: Run coverage via llvm-cov nextest.
+  - `just qa`: Run lint, formatting check, and tests in sequence.
+- **Memory tools (macOS)**
+  - `just mem-scenario 10`: Build release, run `gamacrosd`, capture baseline/after RSS, optional `vmmap`/`leaks`, then shutdown. Outputs metrics to `/tmp/gamacrosd_mem_metrics.txt` and CSV to `/tmp/gamacrosd_mem.csv`.
+  - `just mem-peak`: Build release and run with `/usr/bin/time -l` to inspect peak memory; stop with Ctrl+C after exercising the joystick.
+  - `just mem-xctrace 15`: Record an Instruments Memory Usage trace to `/tmp/gamacrosd_mem.trace` for the given duration.
+
+### Examples
+- Build release: `just build`
+- Run full QA: `just qa`
+- Format code: `just format`
+- Tests only: `just test`
+- Memory scenario for 20s: `just mem-scenario 20,,`
+- Xcode Instruments trace for 30s: `just mem-xctrace 30`
+
+### Notes
+- These recipes assume macOS with Homebrew (for SDL2 path) and Xcode CLI tools for `xctrace`.
+- The helper `_sdl2-lib-env` is internal and runs automatically where needed.
