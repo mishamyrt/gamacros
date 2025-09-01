@@ -1,27 +1,29 @@
-set shell := ["zsh", "-cu"]
+set export := true
 
 BIN_PATH_RELEASE := "target/release/gamacrosd"
 BIN_PATH_DEBUG := "target/debug/gamacrosd"
 
-BREW_PREFIX := shell('brew --prefix')
+BREW_LIBRARY_PATH := `brew --prefix` / "lib"
 
-_sdl2-lib-env:
-  @echo "Setting up SDL2 build environment"
-  @export PKG_CONFIG_PATH="{{BREW_PREFIX}}/lib/pkgconfig"
-  @export LIBRARY_PATH="{{BREW_PREFIX}}/lib"
+export PKG_CONFIG_PATH := BREW_LIBRARY_PATH / "pkgconfig"
+export LIBRARY_PATH := BREW_LIBRARY_PATH
+export RUSTFLAGS := "-L native=" + BREW_LIBRARY_PATH + " -C link-args=-Wl,-rpath," + BREW_LIBRARY_PATH
 
 clean:
   cargo clean
+
+run:
+  cargo run -v -p gamacrosd
 
 [group: 'build']
 build: build-release
 
 [group: 'build']
-build-release: _sdl2-lib-env
+build-release:
   cargo build --release -p gamacrosd
 
 [group: 'build']
-build-debug: _sdl2-lib-env
+build-debug:
   cargo build -p gamacrosd
 
 # Quality Assurance
@@ -34,11 +36,11 @@ check-formatting:
   cargo fmt --all --check
 
 [group: 'qa']
-test: _sdl2-lib-env
+test:
   cargo nextest run
 
 [group: 'qa']
-test-coverage: _sdl2-lib-env
+test-coverage:
   cargo llvm-cov nextest
 
 [group: 'qa']
@@ -49,7 +51,7 @@ qa: lint check-formatting test
 
 # Memory testing
 [group: 'mem']
-mem-scenario duration='10': _sdl2-lib-env
+mem-scenario duration='10':
   #!/usr/bin/env sh
   set -eo pipefail
   cargo build --release -p gamacrosd
@@ -85,7 +87,7 @@ mem-scenario duration='10': _sdl2-lib-env
   echo "Saved metrics to /tmp/gamacrosd_mem_metrics.txt and /tmp/gamacrosd_mem.csv"
 
 [group: 'mem']
-mem-peak: _sdl2-lib-env
+mem-peak:
   #!/usr/bin/env sh
   set -euo pipefail
   cargo build --release -p gamacrosd
@@ -93,7 +95,7 @@ mem-peak: _sdl2-lib-env
   /usr/bin/time -l "$BIN_PATH_RELEASE"
 
 [group: 'mem']
-mem-xctrace duration='15': _sdl2-lib-env
+mem-xctrace duration='15':
   #!/usr/bin/env sh
   set -euo pipefail
   cargo build --release -p gamacrosd
@@ -102,5 +104,5 @@ mem-xctrace duration='15': _sdl2-lib-env
   xcrun xctrace record --template 'Memory Usage' --time-limit {{duration}}s --output "$OUT" --launch "$BIN_PATH_RELEASE"
   echo "Done. Open $OUT in Instruments to inspect allocations and footprint."
 
-install: _sdl2-lib-env
+install:
   cargo install --path crates/gamacrosd
