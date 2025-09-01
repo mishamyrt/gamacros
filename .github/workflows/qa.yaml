@@ -34,7 +34,10 @@ jobs:
         uses: taiki-e/install-action@nextest
 
       - name: Setup SDL2 with build dependencies
-        run: brew install sdl2 pkg-config
+        run: |
+          brew install sdl2 pkg-config
+          # add homebrew lib to rustflags
+          echo "RUSTFLAGS=-L native=/opt/homebrew/lib -C link-args=-Wl,-rpath,/opt/homebrew/lib" >> $GITHUB_ENV
 
       - name: Run tests with coverage
         run: just test-coverage
