@@ -9,8 +9,8 @@ BREW_LIBRARY_PATH := "{{BREW_PREFIX_PATH}}/lib"
 
 _sdl2-lib-env:
   @echo "Setting up SDL2 build environment"
-  @export BREW_PREFIX={{BREW_LIBRARY_PATH}}
-  @export PKG_CONFIG_PATH={{BREW_PKG_CONFIG_PATH}}
+  export BREW_PREFIX={{BREW_LIBRARY_PATH}}
+  export PKG_CONFIG_PATH={{BREW_PKG_CONFIG_PATH}}
 
 clean:
   cargo clean
