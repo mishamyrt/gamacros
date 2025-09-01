@@ -3,11 +3,12 @@ set shell := ["zsh", "-cu"]
 BIN_PATH_RELEASE := "target/release/gamacrosd"
 BIN_PATH_DEBUG := "target/debug/gamacrosd"
 
-BREW_LIBRARY_PATH := append("/lib", shell('brew --prefix'))
+BREW_PREFIX := shell('brew --prefix')
 
 _sdl2-lib-env:
   @echo "Setting up SDL2 build environment"
-  @export LIBRARY_PATH={{BREW_LIBRARY_PATH}}
+  @export PKG_CONFIG_PATH="{{BREW_PREFIX}}/lib/pkgconfig"
+  @export LIBRARY_PATH="{{BREW_PREFIX}}/lib"
 
 clean:
   cargo clean
