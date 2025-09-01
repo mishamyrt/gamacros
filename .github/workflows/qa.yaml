@@ -51,6 +51,11 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Setup Just
+        uses: extractions/setup-just@v3
+        with:
+          just-version: ${{ env.JUST_VERSION }}
+
       - name: Check formatting
         run: just check-formatting
 
