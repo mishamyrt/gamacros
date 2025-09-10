@@ -1,10 +1,9 @@
 use std::sync::Arc;
 
 use ahash::AHashMap;
-use enigo::Key;
 
 use gamacros_gamepad::{Axis as CtrlAxis, ControllerId};
-use gamacros_control::KeyCombo;
+use gamacros_control::{Key, KeyCombo};
 use gamacros_profile::{
     ArrowsParams, Axis as ProfileAxis, MouseParams, ScrollParams, StepperParams,
     StickMode, StickRules, StickSide,
@@ -478,7 +477,8 @@ impl StickProcessor {
                 };
                 *slot = Some(st);
                 if reg.fire_on_activate {
-                    Some(Action::KeyTap(Arc::new(KeyCombo::from_key(reg.key))))
+                    let key = reg.key.to_owned();
+                    Some(Action::KeyTap(Arc::new(KeyCombo::from_key(key))))
                 } else {
                     None
                 }

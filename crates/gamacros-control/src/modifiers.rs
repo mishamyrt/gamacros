@@ -1,4 +1,4 @@
-use enigo::Key;
+use crate::key::Key;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum Modifier {
