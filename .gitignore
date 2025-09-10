@@ -2,5 +2,5 @@
 .DS_Store
 .vscode
 testdata/profile.yaml
-profile.yaml
+gc_profile.yaml
 .supercode

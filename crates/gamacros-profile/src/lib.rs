@@ -1,11 +1,13 @@
 mod profile;
 mod profile_common;
 mod profile_v1;
+mod resolve;
 
 use thiserror::Error;
 
 pub use profile_common::parse_profile;
 pub use profile::*;
+pub use resolve::resolve_profile;
 
 #[derive(Debug, Error)]
 pub enum ProfileError {
@@ -29,4 +31,11 @@ pub enum ProfileError {
     InvalidAxis(String),
     #[error("key parse error: {0}")]
     KeyParseError(String),
+    #[error("no profile matches path \"{0}\"")]
+    ProfileNotFound(String),
+
+    #[error("environment variable not set: {0}")]
+    EnvVarNotSet(String),
+    #[error("current directory not set")]
+    CurrentDirNotSet,
 }

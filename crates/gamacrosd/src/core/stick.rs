@@ -1,6 +1,8 @@
-use ahash::AHashMap;
+use std::sync::Arc;
 
+use ahash::AHashMap;
 use enigo::Key;
+
 use gamacros_gamepad::{Axis as CtrlAxis, ControllerId};
 use gamacros_control::KeyCombo;
 use gamacros_profile::{
@@ -8,8 +10,7 @@ use gamacros_profile::{
     StickMode, StickRules, StickSide,
 };
 
-use crate::gamacros::Action;
-use std::sync::Arc;
+use super::gamacros::Action;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum Direction {

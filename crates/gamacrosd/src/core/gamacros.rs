@@ -4,12 +4,13 @@ use std::collections::HashMap;
 
 use colored::Colorize;
 
-use crate::{print_debug, print_info, stick::StickProcessor};
-
 use gamacros_control::KeyCombo;
 use gamacros_bit_mask::Bitmask;
 use gamacros_gamepad::{Button, ControllerId, ControllerInfo, Axis as CtrlAxis};
 use gamacros_profile::{ButtonPhase, ButtonRule, Profile, StickRules};
+
+use crate::{print_debug, print_info};
+use super::stick::StickProcessor;
 
 #[derive(Debug, Clone)]
 pub enum Action {

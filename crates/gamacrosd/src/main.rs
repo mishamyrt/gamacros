@@ -1,19 +1,139 @@
-mod gamacros;
+mod core;
 mod logging;
-mod stick;
+mod cli;
 
-use std::{time::Duration, fs};
+use std::{fs, process, time::Duration};
 
 use colored::Colorize;
 use crossbeam_channel::{select, unbounded};
-use fern::{Dispatch};
+use fern::Dispatch;
+use clap::Parser;
 
 use gamacros_gamepad::{ControllerEvent, ControllerManager};
 use gamacros_control::Performer;
-use gamacros_profile::{parse_profile, ButtonPhase, Profile};
+use gamacros_profile::{parse_profile, resolve_profile, ButtonPhase, Profile};
+use lunchctl::{LaunchAgent, LaunchControllable};
 use nsworkspace::{Event as ActivityEvent, Monitor, NotificationListener};
 
-use crate::gamacros::{Gamacros, Action};
+use core::{Gamacros, Action};
+use cli::Cli;
+
+use crate::cli::Command;
+
+const APP_LABEL: &str = "co.myrt.gamacros";
+
+fn main() -> process::ExitCode {
+    let cli = Cli::parse();
+    setup_logging(cli.verbose, cli.no_color);
+
+    let bin_path = std::env::current_exe().unwrap();
+
+    match cli.command {
+        Command::Run { profile } => {
+            let Some(profile) = load_profile(profile.as_deref()) else {
+                return process::ExitCode::FAILURE;
+            };
+            run_event_loop(profile);
+        }
+        Command::Start { profile } => {
+            let profile_path = match resolve_profile(profile.as_deref()) {
+                Ok(path) => path,
+                Err(e) => {
+                    print_error!("failed to resolve profile: {e}");
+                    return process::ExitCode::FAILURE;
+                }
+            };
+
+            let mut arguments = vec![bin_path.display().to_string()];
+            if cli.verbose {
+                arguments.push("--verbose".to_string());
+            }
+            arguments.push("run".to_string());
+            arguments.push("--profile".to_string());
+            arguments.push(profile_path.display().to_string());
+
+            let agent = LaunchAgent {
+                label: APP_LABEL.to_string(),
+                program_arguments: arguments,
+                standard_out_path: "/tmp/gamacros.out".to_string(),
+                standard_error_path: "/tmp/gamacros.err".to_string(),
+                keep_alive: true,
+                run_at_load: true,
+            };
+
+            if let Err(e) = agent.write() {
+                print_error!("Failed to write agent: {}", e);
+                return process::ExitCode::FAILURE;
+            }
+
+            match agent.is_running() {
+                Ok(true) => {
+                    print_info!("Agent is already running");
+                }
+                Ok(false) => {
+                    print_info!("Starting agent");
+                    if let Err(e) = agent.bootstrap() {
+                        print_error!("Failed to bootstrap agent: {}", e);
+                        return process::ExitCode::FAILURE;
+                    }
+                    print_info!("Agent started");
+                }
+                Err(e) => {
+                    print_error!("Failed to check if agent is running: {}", e);
+                    return process::ExitCode::FAILURE;
+                }
+            }
+        }
+        Command::Stop => {
+            if !LaunchAgent::exists(APP_LABEL) {
+                print_error!("Agent does not exist");
+                return process::ExitCode::FAILURE;
+            }
+
+            let agent = LaunchAgent::from_file(APP_LABEL).unwrap();
+
+            match agent.is_running() {
+                Ok(true) => {
+                    print_info!("Stopping agent");
+                    if let Err(e) = agent.boot_out() {
+                        print_error!("Failed to stop agent: {}", e);
+                        return process::ExitCode::FAILURE;
+                    }
+                    print_info!("Agent stopped");
+                }
+                Ok(false) => {
+                    print_info!("Agent is not running");
+                }
+                Err(e) => {
+                    print_error!("Failed to check if agent is running: {}", e);
+                    return process::ExitCode::FAILURE;
+                }
+            }
+        }
+        Command::Status => {
+            if !LaunchAgent::exists(APP_LABEL) {
+                print_info!("Agent does not exist");
+                return process::ExitCode::FAILURE;
+            }
+
+            let agent = LaunchAgent::from_file(APP_LABEL).unwrap();
+            match agent.is_running() {
+                Ok(true) => {
+                    print_info!("Agent is running");
+                }
+                Ok(false) => {
+                    print_info!("Agent is not running");
+                }
+                Err(e) => {
+                    print_error!("Failed to check if agent is running: {}", e);
+                    return process::ExitCode::FAILURE;
+                }
+            }
+        }
+    }
+
+    process::ExitCode::SUCCESS
+}
 
 fn setup_logging(verbose: bool, no_color: bool) {
     let log_level = if verbose {
@@ -32,18 +152,33 @@ fn setup_logging(verbose: bool, no_color: bool) {
     }
 }
 
-fn load_profile() -> Profile {
-    let profile_path = std::env::current_dir()
-        .ok()
-        .map(|p| p.join("profile.yaml"))
-        .unwrap_or_else(|| std::path::PathBuf::from("profile.yaml"));
-    let input = fs::read_to_string(&profile_path).ok().unwrap();
-    parse_profile(&input).unwrap()
+fn load_profile(target_path: Option<&str>) -> Option<Profile> {
+    let profile_path = match resolve_profile(target_path) {
+        Ok(path) => path,
+        Err(e) => {
+            print_error!("failed to resolve profile: {e}");
+            return None;
+        }
+    };
+    print_info!("loading profile from {}", profile_path.display());
+    let content = match fs::read_to_string(&profile_path) {
+        Ok(content) => content,
+        Err(e) => {
+            print_error!("failed to read profile: {e}");
+            return None;
+        }
+    };
+
+    match parse_profile(&content) {
+        Ok(profile) => Some(profile),
+        Err(e) => {
+            print_error!("failed to parse profile: {e}");
+            None
+        }
+    }
 }
 
-fn main() {
-    setup_logging(true, false);
-
+fn run_event_loop(profile: Profile) {
     // Activity monitor must run on the main thread.
     // We keep its std::mpsc receiver and poll it from the event loop (no bridge thread).
     let Some((monitor, activity_std_rx, monitor_stop_tx)) = Monitor::new() else {
@@ -73,8 +208,6 @@ fn main() {
         // Stick processing is owned by Gamacros now
         let ticker = crossbeam_channel::tick(Duration::from_millis(10));
 
-        // TODO: add file watch and hot-reload.
-        let profile = load_profile();
         let mut gamacros = Gamacros::new(profile);
         print_info!(
             "gamacrosd started. Listening for controller and activity events."

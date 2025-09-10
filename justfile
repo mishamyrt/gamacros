@@ -12,8 +12,8 @@ export RUSTFLAGS := "-L native=" + BREW_LIBRARY_PATH + " -C link-args=-Wl,-rpath
 clean:
   cargo clean
 
-run:
-  cargo run -v -p gamacrosd
+run *ARGS:
+  cargo run -v -p gamacrosd -- {{ARGS}}
 
 [group: 'build']
 build: build-release
