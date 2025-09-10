@@ -187,6 +187,10 @@ fn run_event_loop(profile: Profile) {
     };
 
     monitor.subscribe(NotificationListener::DidActivateApplication);
+    let mut gamacros = Gamacros::new(profile);
+    if let Some(app) = monitor.get_active_application() {
+        gamacros.set_active_app(&app)
+    }
 
     // Handle Ctrl+C to exit cleanly
     let (stop_tx, stop_rx) = unbounded::<()>();
@@ -208,7 +212,6 @@ fn run_event_loop(profile: Profile) {
         // Stick processing is owned by Gamacros now
         let ticker = crossbeam_channel::tick(Duration::from_millis(10));
 
-        let mut gamacros = Gamacros::new(profile);
         print_info!(
             "gamacrosd started. Listening for controller and activity events."
         );
