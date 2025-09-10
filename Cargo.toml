@@ -1,11 +1,11 @@
 [workspace]
 members = [
-  "crates/gamacrosd",
-  "crates/gamacros-gamepad",
   "crates/gamacros-control",
+  "crates/gamacros-gamepad",
   "crates/gamacros-profile",
   "crates/gamacros-bit/derive",
   "crates/gamacros-bit/mask",
+  "crates/gamacrosd",
 ]
 resolver = "2"
 
@@ -22,10 +22,10 @@ license = "MIT"
 gamacrosd = { path = "crates/gamacrosd" }
 gamacros-control = { path = "crates/gamacros-control" }
 gamacros-gamepad = { path = "crates/gamacros-gamepad" }
-gamacros-activity = { path = "crates/gamacros-activity" }
 gamacros-profile = { path = "crates/gamacros-profile" }
 gamacros-bit-derive = { path = "crates/gamacros-bit/derive" }
 gamacros-bit-mask = { path = "crates/gamacros-bit/mask" }
+nsworkspace = "0.2.0"
 
 ctrlc = "3.4.5"
 crossbeam-channel = "0.5"

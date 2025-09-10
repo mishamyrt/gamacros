@@ -1,7 +1,6 @@
 mod gamacros;
 mod logging;
 mod stick;
-// mod axis_bus;
 
 use std::{time::Duration, fs};
 
@@ -12,7 +11,7 @@ use fern::{Dispatch};
 use gamacros_gamepad::{ControllerEvent, ControllerManager};
 use gamacros_control::Performer;
 use gamacros_profile::{parse_profile, ButtonPhase, Profile};
-use gamacros_activity::{Monitor, Event as ActivityEvent, request_stop};
+use nsworkspace::{Event as ActivityEvent, Monitor, NotificationListener};
 
 use crate::gamacros::{Gamacros, Action};
 
@@ -43,20 +42,24 @@ fn load_profile() -> Profile {
 }
 
 fn main() {
-    setup_logging(false, false);
+    setup_logging(true, false);
+
+    // Activity monitor must run on the main thread.
+    // We keep its std::mpsc receiver and poll it from the event loop (no bridge thread).
+    let Some((monitor, activity_std_rx, monitor_stop_tx)) = Monitor::new() else {
+        print_error!("failed to start activity monitor");
+        return;
+    };
+
+    monitor.subscribe(NotificationListener::DidActivateApplication);
 
     // Handle Ctrl+C to exit cleanly
     let (stop_tx, stop_rx) = unbounded::<()>();
     ctrlc::set_handler(move || {
         let _ = stop_tx.send(());
-        // also request the NSApplication run loop to stop
-        request_stop();
+        let _ = monitor_stop_tx.send(());
     })
     .expect("failed to set Ctrl+C handler");
-
-    // Activity monitor must run on the main thread.
-    // We keep its std::mpsc receiver and poll it from the event loop (no bridge thread).
-    let (monitor, activity_std_rx) = Monitor::new();
 
     // Run the main event loop in a background thread while the main thread runs the monitor loop.
     let event_loop = std::thread::Builder::new()
@@ -121,7 +124,7 @@ fn main() {
                 }
             }
             while let Ok(msg) = activity_std_rx.try_recv() {
-                if let ActivityEvent::AppChange(bundle_id) = msg {
+                if let ActivityEvent::DidActivateApplication(bundle_id) = msg {
                     gamacros.set_active_app(&bundle_id)
                 }
             }
@@ -129,10 +132,7 @@ fn main() {
     }).expect("failed to spawn event loop thread");
 
     // Start monitoring on the main thread (blocks until error/exit)
-    if let Err(e) = monitor.start_listening() {
-        print_error!("activity monitor error: {e}");
-        return;
-    }
+    monitor.run();
     if let Err(e) = event_loop.join() {
         print_error!("event loop error: {e:?}");
     }

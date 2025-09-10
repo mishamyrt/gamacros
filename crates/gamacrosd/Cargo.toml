@@ -14,7 +14,6 @@ license = { workspace = true }
 gamacros-gamepad = { workspace = true }
 gamacros-control = { workspace = true }
 gamacros-profile = { workspace = true }
-gamacros-activity = { workspace = true }
 gamacros-bit-mask = { workspace = true }
 enigo = { workspace = true }
 ctrlc = { workspace = true }
@@ -22,6 +21,7 @@ crossbeam-channel = { workspace = true }
 thiserror = { workspace = true }
 dashmap = { workspace = true }
 chrono = { workspace = true }
+nsworkspace = { workspace = true }
 log = "0.4.26"
 colored = "3.0.0"
 fern = "0.6.1"
