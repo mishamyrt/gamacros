@@ -60,7 +60,7 @@ pub enum Key {
     Other(u32),
 }
 
-fn key_code_for_key_string(ch: char) -> u16 {
+pub(crate) fn key_code_for_key_string(ch: char) -> u16 {
     match ch {
         'a' => 0,
         's' => 1,

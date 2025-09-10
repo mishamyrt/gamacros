@@ -161,6 +161,8 @@ impl std::str::FromStr for KeyCombo {
 
 #[cfg(test)]
 mod tests {
+    use crate::key::key_code_for_key_string;
+
     use super::*;
     use serde::de::value::Error as DeError;
     use serde::de::IntoDeserializer;
@@ -214,6 +216,6 @@ mod tests {
         assert!(kc.modifiers.contains(Modifier::Alt));
         assert!(kc.modifiers.contains(Modifier::Shift));
         assert_eq!(kc.keys.len(), 1);
-        assert_eq!(kc.keys[0], Key::Unicode('a'));
+        assert_eq!(kc.keys[0], Key::Other(key_code_for_key_string('a') as u32));
     }
 }
