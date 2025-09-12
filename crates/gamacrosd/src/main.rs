@@ -9,12 +9,12 @@ use colored::Colorize;
 use crossbeam_channel::{select, unbounded};
 use fern::Dispatch;
 use clap::Parser;
+use lunchctl::{LaunchAgent, LaunchControllable};
+use nsworkspace::{Event as ActivityEvent, Monitor, NotificationListener};
 
 use gamacros_gamepad::{ControllerEvent, ControllerManager};
 use gamacros_control::Performer;
 use gamacros_profile::{parse_profile, resolve_profile, Profile};
-use lunchctl::{LaunchAgent, LaunchControllable};
-use nsworkspace::{Event as ActivityEvent, Monitor, NotificationListener};
 
 use app::{Gamacros, Action};
 use cli::Cli;
