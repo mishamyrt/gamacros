@@ -1,67 +1,87 @@
+use std::sync::Arc;
 use core::str;
-use std::collections::HashMap;
+use ahash::{AHashMap, AHashSet};
 
 use gamacros_bit_mask::Bitmask;
 use gamacros_gamepad::Button;
 use gamacros_control::KeyCombo;
-use std::sync::Arc;
 
 use crate::ProfileError;
 
+pub const DEFAULT_SHELL: &str = "/bin/sh";
+
 /// A macOS application bundle ID.
 pub type BundleId = Box<str>;
+
+/// A controller ID.
+/// Vendor ID and product ID.
+pub type ControllerId = (u16, u16);
 
 /// A chord of buttons.
 pub type ButtonChord = Bitmask<Button>;
 
 /// A binding of stick sides to rules.
-pub type StickBinding = HashMap<StickSide, StickMode>;
+pub type StickBinding = AHashMap<StickSide, StickMode>;
 
 /// A set of rules to handle button presses for an app.
-pub type ButtonRules = HashMap<ButtonChord, ButtonRule>;
+pub type ButtonRules = AHashMap<ButtonChord, ButtonRule>;
 
 /// A set of rules to handle stick movements for an app.
-pub type StickRules = HashMap<StickSide, StickMode>;
+pub type StickRules = AHashMap<StickSide, StickMode>;
 
 /// A set of rules to handle controller settings for an app.
-pub type RulesByApp = HashMap<BundleId, AppRules>;
-
-/// A set of rules to handle controller settings for an app.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct AppRules {
     pub buttons: ButtonRules,
     pub sticks: StickRules,
 }
 
+/// Controller parameters.
+#[derive(Debug, Clone, Default)]
+pub struct ControllerSettings {
+    pub mapping: AHashMap<Button, Button>,
+}
+
+impl ControllerSettings {
+    pub fn new(mapping: AHashMap<Button, Button>) -> Self {
+        Self { mapping }
+    }
+}
+
+/// A set of rules to handle app settings for an app.
+pub type RuleMap = AHashMap<BundleId, AppRules>;
+
+/// A set of rules to handle app settings for an app.
+pub type ControllerSettingsMap = AHashMap<ControllerId, ControllerSettings>;
+
+/// A set of rules to handle app settings for an app.
+pub type Blacklist = AHashSet<String>;
+
 /// Profile is a collection of rules and settings for controllers and applications.
 #[derive(Debug, Clone)]
 pub struct Profile {
     /// Controller settings.
-    pub controllers: Vec<ControllerParams>,
-    /// App rules. Bundle ID -> app rules.
-    pub rules: RulesByApp,
+    pub controllers: ControllerSettingsMap,
+    /// Blacklist apps.
+    pub blacklist: AHashSet<String>,
+    /// App rules.
+    pub rules: RuleMap,
+    /// Shell to run for shell actions.
+    pub shell: Box<str>,
 }
 
-/// A phase of a button.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ButtonPhase {
-    Pressed,
-    Released,
-}
-
-/// A controller settings.
+/// A action for a gamepad button.
 #[derive(Debug, Clone)]
-pub struct ControllerParams {
-    pub vid: u16,
-    pub pid: u16,
-    pub remap: HashMap<Button, Button>,
+pub enum ButtonAction {
+    Keystroke(Arc<KeyCombo>),
+    Macros(Arc<Vec<KeyCombo>>),
+    Shell(String),
 }
 
 /// A rule for a gamepad button.
 #[derive(Debug, Clone)]
 pub struct ButtonRule {
-    pub action: Arc<KeyCombo>,
-    pub when: ButtonPhase,
+    pub action: ButtonAction,
     pub vibrate: Option<u16>,
 }
 

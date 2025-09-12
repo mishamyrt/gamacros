@@ -17,3 +17,4 @@ thiserror = { workspace = true }
 gamacros-control = { workspace = true }
 gamacros-gamepad = { workspace = true }
 gamacros-bit-mask = { workspace = true }
+ahash = { workspace = true, features = ["serde"] }

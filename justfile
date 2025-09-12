@@ -36,8 +36,8 @@ check-formatting:
   cargo fmt --all --check
 
 [group: 'qa']
-test:
-  cargo nextest run
+test *ARGS:
+  cargo nextest run {{ARGS}}
 
 [group: 'qa']
 test-coverage:

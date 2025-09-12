@@ -1,8 +1,9 @@
-mod core;
+mod app;
 mod logging;
 mod cli;
 
 use std::{fs, process, time::Duration};
+use std::process::Command as StdCommand;
 
 use colored::Colorize;
 use crossbeam_channel::{select, unbounded};
@@ -11,14 +12,14 @@ use clap::Parser;
 
 use gamacros_gamepad::{ControllerEvent, ControllerManager};
 use gamacros_control::Performer;
-use gamacros_profile::{parse_profile, resolve_profile, ButtonPhase, Profile};
+use gamacros_profile::{parse_profile, resolve_profile, Profile};
 use lunchctl::{LaunchAgent, LaunchControllable};
 use nsworkspace::{Event as ActivityEvent, Monitor, NotificationListener};
 
-use core::{Gamacros, Action};
+use app::{Gamacros, Action};
 use cli::Cli;
 
-use crate::cli::Command;
+use crate::{app::ButtonPhase, cli::Command};
 
 const APP_LABEL: &str = "co.myrt.gamacros";
 
@@ -212,6 +213,8 @@ fn run_event_loop(profile: Profile) {
         // Stick processing is owned by Gamacros now
         let ticker = crossbeam_channel::tick(Duration::from_millis(10));
 
+        let mut action_runner = ActionRunner::new(&mut keypress, &manager, gamacros.profile.shell.clone());
+
         print_info!(
             "gamacrosd started. Listening for controller and activity events."
         );
@@ -236,12 +239,12 @@ fn run_event_loop(profile: Profile) {
                         }
                         Ok(ControllerEvent::ButtonPressed { id, button }) => {
                             gamacros.on_button_with(id, button, ButtonPhase::Pressed, |action| {
-                                apply_action(&mut keypress, &manager, action);
+                                action_runner.run(action);
                             });
                         }
                         Ok(ControllerEvent::ButtonReleased { id, button }) => {
                             gamacros.on_button_with(id, button, ButtonPhase::Released, |action| {
-                                apply_action(&mut keypress, &manager, action);
+                                action_runner.run(action);
                             });
                         }
                         Ok(ControllerEvent::AxisMotion { id, axis, value }) => {
@@ -255,7 +258,7 @@ fn run_event_loop(profile: Profile) {
                 }
                 recv(ticker) -> _ => {
                     gamacros.on_tick_with(|action| {
-                        apply_action(&mut keypress, &manager, action);
+                        action_runner.run(action);
                     });
                 }
             }
@@ -274,37 +277,80 @@ fn run_event_loop(profile: Profile) {
     }
 }
 
-// stick processing is handled inside Gamacros
+struct ActionRunner<'a> {
+    keypress: &'a mut Performer,
+    manager: &'a ControllerManager,
+    shell: Box<str>,
+}
 
-fn apply_action(
-    keypress: &mut Performer,
-    manager: &ControllerManager,
-    action: Action,
-) {
-    match action {
-        Action::KeyTap(k) => {
-            let _ = keypress.perform(&k);
+impl<'a> ActionRunner<'a> {
+    fn new(
+        keypress: &'a mut Performer,
+        manager: &'a ControllerManager,
+        shell: Box<str>,
+    ) -> Self {
+        Self {
+            keypress,
+            manager,
+            shell,
         }
-        Action::KeyPress(k) => {
-            let _ = keypress.press(&k);
-        }
-        Action::KeyRelease(k) => {
-            let _ = keypress.release(&k);
-        }
-        Action::MouseMove { dx, dy } => {
-            let _ = keypress.mouse_move(dx, dy);
-        }
-        Action::Scroll { h, v } => {
-            if h != 0 {
-                let _ = keypress.scroll_x(h);
+    }
+
+    fn run(&mut self, action: Action) {
+        match action {
+            Action::KeyTap(k) => {
+                let _ = self.keypress.perform(&k);
             }
-            if v != 0 {
-                let _ = keypress.scroll_y(v);
+            Action::KeyPress(k) => {
+                let _ = self.keypress.press(&k);
+            }
+            Action::KeyRelease(k) => {
+                let _ = self.keypress.release(&k);
+            }
+            Action::Macros(m) => {
+                for k in m.iter() {
+                    let _ = self.keypress.perform(k);
+                }
+            }
+            Action::Shell(s) => {
+                let _ = self.run_shell(&s);
+            }
+            Action::MouseMove { dx, dy } => {
+                let _ = self.keypress.mouse_move(dx, dy);
+            }
+            Action::Scroll { h, v } => {
+                if h != 0 {
+                    let _ = self.keypress.scroll_x(h);
+                }
+                if v != 0 {
+                    let _ = self.keypress.scroll_y(v);
+                }
+            }
+            Action::Rumble { id, ms } => {
+                if let Some(h) = self.manager.controller(id) {
+                    let _ = h.rumble(0.2, 0.2, Duration::from_millis(ms as u64));
+                }
             }
         }
-        Action::Rumble { id, ms } => {
-            if let Some(h) = manager.controller(id) {
-                let _ = h.rumble(0.2, 0.2, Duration::from_millis(ms as u64));
+    }
+
+    fn run_shell(&mut self, cmd: &str) -> Result<String, String> {
+        let shell = self.shell.clone();
+        let result = StdCommand::new(shell.into_string().as_str())
+            .args(["-c", cmd])
+            .output();
+
+        match result {
+            Ok(output) => {
+                print_info!(
+                    "shell command output: {}",
+                    String::from_utf8_lossy(&output.stdout)
+                );
+                Ok(String::from_utf8_lossy(&output.stdout).to_string())
+            }
+            Err(e) => {
+                print_error!("shell command error: {}", e);
+                Err(e.to_string())
             }
         }
     }

@@ -1,6 +1,7 @@
 mod profile;
 mod profile_common;
 mod profile_v1;
+mod selector;
 mod resolve;
 
 use thiserror::Error;
@@ -19,6 +20,8 @@ pub enum ProfileError {
     Yaml(#[from] serde_yaml::Error),
     #[error("invalid trigger: {0}")]
     InvalidTrigger(String),
+    #[error("invalid actions for {0}")]
+    InvalidActions(String),
     #[error("invalid id: {0} -> {1}")]
     InvalidId(String, String),
     #[error("invalid button: {0}")]
@@ -38,4 +41,6 @@ pub enum ProfileError {
     EnvVarNotSet(String),
     #[error("current directory not set")]
     CurrentDirNotSet,
+    #[error("invalid selector: {0}")]
+    InvalidSelector(#[from] selector::SelectorError),
 }

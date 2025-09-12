@@ -11,6 +11,7 @@ dependencies = [
  "cfg-if",
  "getrandom",
  "once_cell",
+ "serde",
  "version_check",
  "zerocopy",
 ]
@@ -437,6 +438,7 @@ dependencies = [
 name = "gamacros-profile"
 version = "0.0.0"
 dependencies = [
+ "ahash",
  "gamacros-bit-mask",
  "gamacros-control",
  "gamacros-gamepad",

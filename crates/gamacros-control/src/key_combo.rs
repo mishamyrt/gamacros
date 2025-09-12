@@ -1,4 +1,7 @@
-use crate::{key::{parse_key, Key}, Modifier, Modifiers};
+use crate::{
+    key::{parse_key, Key},
+    Modifier, Modifiers,
+};
 use enigo::{
     Direction::{Click, Press, Release},
     Enigo, InputResult, Keyboard,
