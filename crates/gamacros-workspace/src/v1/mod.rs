@@ -1,19 +1,14 @@
+mod strings;
+mod parse;
 mod profile;
-mod profile_common;
-mod profile_v1;
 mod selector;
-mod resolve;
 
 use thiserror::Error;
 
-pub use profile_common::parse_profile;
-pub use profile::*;
-pub use resolve::resolve_profile;
+pub use profile::ProfileV1;
 
-#[derive(Debug, Error)]
-pub enum ProfileError {
-    #[error("unsupported version: {0}")]
-    UnsupportedVersion(u8),
+#[derive(Error, Debug)]
+pub enum Error {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
     #[error("yaml: {0}")]
@@ -33,14 +28,9 @@ pub enum ProfileError {
     #[error("invalid axis: {0}")]
     InvalidAxis(String),
     #[error("key parse error: {0}")]
-    KeyParseError(String),
+    KeyParse(String),
     #[error("no profile matches path \"{0}\"")]
     ProfileNotFound(String),
-
-    #[error("environment variable not set: {0}")]
-    EnvVarNotSet(String),
-    #[error("current directory not set")]
-    CurrentDirNotSet,
-    #[error("invalid selector: {0}")]
-    InvalidSelector(#[from] selector::SelectorError),
+    #[error("selector error: {0}")]
+    BadSelector(#[from] selector::SelectorError),
 }

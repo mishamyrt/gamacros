@@ -14,7 +14,7 @@ use nsworkspace::{Event as ActivityEvent, Monitor, NotificationListener};
 
 use gamacros_gamepad::{ControllerEvent, ControllerManager};
 use gamacros_control::Performer;
-use gamacros_profile::{parse_profile, resolve_profile, Profile};
+use gamacros_workspace::{parse_profile, resolve_profile, Workspace};
 
 use app::{Gamacros, Action};
 use cli::Cli;
@@ -22,6 +22,7 @@ use cli::Cli;
 use crate::{app::ButtonPhase, cli::Command};
 
 const APP_LABEL: &str = "co.myrt.gamacros";
+const DEFAULT_SHELL: &str = "/bin/zsh";
 
 fn main() -> process::ExitCode {
     let cli = Cli::parse();
@@ -31,7 +32,7 @@ fn main() -> process::ExitCode {
 
     match cli.command {
         Command::Run { profile } => {
-            let Some(profile) = load_profile(profile.as_deref()) else {
+            let Some(profile) = load_workspace(profile.as_deref()) else {
                 return process::ExitCode::FAILURE;
             };
             run_event_loop(profile);
@@ -153,7 +154,7 @@ fn setup_logging(verbose: bool, no_color: bool) {
     }
 }
 
-fn load_profile(target_path: Option<&str>) -> Option<Profile> {
+fn load_workspace(target_path: Option<&str>) -> Option<Workspace> {
     let profile_path = match resolve_profile(target_path) {
         Ok(path) => path,
         Err(e) => {
@@ -179,7 +180,7 @@ fn load_profile(target_path: Option<&str>) -> Option<Profile> {
     }
 }
 
-fn run_event_loop(profile: Profile) {
+fn run_event_loop(workspace: Workspace) {
     // Activity monitor must run on the main thread.
     // We keep its std::mpsc receiver and poll it from the event loop (no bridge thread).
     let Some((monitor, activity_std_rx, monitor_stop_tx)) = Monitor::new() else {
@@ -188,7 +189,7 @@ fn run_event_loop(profile: Profile) {
     };
 
     monitor.subscribe(NotificationListener::DidActivateApplication);
-    let mut gamacros = Gamacros::new(profile);
+    let mut gamacros = Gamacros::new(workspace);
     if let Some(app) = monitor.get_active_application() {
         gamacros.set_active_app(&app)
     }
@@ -213,7 +214,8 @@ fn run_event_loop(profile: Profile) {
         // Stick processing is owned by Gamacros now
         let ticker = crossbeam_channel::tick(Duration::from_millis(10));
 
-        let mut action_runner = ActionRunner::new(&mut keypress, &manager, gamacros.profile.shell.clone());
+        let shell = gamacros.workspace.shell.clone().unwrap_or(DEFAULT_SHELL.into());
+        let mut action_runner = ActionRunner::new(&mut keypress, &manager, shell);
 
         print_info!(
             "gamacrosd started. Listening for controller and activity events."

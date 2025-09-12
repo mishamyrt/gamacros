@@ -7,8 +7,8 @@ use colored::Colorize;
 use gamacros_control::KeyCombo;
 use gamacros_bit_mask::Bitmask;
 use gamacros_gamepad::{Button, ControllerId, ControllerInfo, Axis as CtrlAxis};
-use gamacros_profile::{
-    ButtonAction, ButtonRule, ControllerSettings, Profile, StickRules,
+use gamacros_workspace::{
+    ButtonAction, ButtonRule, ControllerSettings, Workspace, StickRules,
 };
 
 use crate::{app::ButtonPhase, print_debug, print_info};
@@ -35,7 +35,7 @@ struct ControllerState {
 }
 
 pub struct Gamacros {
-    pub profile: Profile,
+    pub workspace: Workspace,
     active_app: Box<str>,
     controllers: AHashMap<ControllerId, ControllerState>,
     sticks: RefCell<StickProcessor>,
@@ -44,9 +44,9 @@ pub struct Gamacros {
 }
 
 impl Gamacros {
-    pub fn new(profile: Profile) -> Self {
+    pub fn new(workspace: Workspace) -> Self {
         Self {
-            profile,
+            workspace,
             active_app: "".into(),
             controllers: AHashMap::new(),
             sticks: RefCell::new(StickProcessor::new()),
@@ -68,7 +68,7 @@ impl Gamacros {
             info.product_id
         );
         let settings = self
-            .profile
+            .workspace
             .controllers
             .get(&(info.vendor_id, info.product_id))
             .cloned();
@@ -98,7 +98,7 @@ impl Gamacros {
         self.active_app = app.into();
         self.sticks.borrow_mut().on_app_change();
         self.active_stick_rules = self
-            .profile
+            .workspace
             .rules
             .get(&*self.active_app)
             .map(|r| Arc::new(r.sticks.clone()));
@@ -147,7 +147,7 @@ impl Gamacros {
     ) {
         print_debug!("handle button - {id} {button:?} {phase:?}");
         let active_app = self.get_active_app();
-        let Some(app_rules) = self.profile.rules.get(active_app) else {
+        let Some(app_rules) = self.workspace.rules.get(active_app) else {
             return;
         };
         let state = self

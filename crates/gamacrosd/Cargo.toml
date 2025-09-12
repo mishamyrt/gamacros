@@ -13,7 +13,7 @@ license = { workspace = true }
 [dependencies]
 gamacros-gamepad = { workspace = true }
 gamacros-control = { workspace = true }
-gamacros-profile = { workspace = true }
+gamacros-workspace = { workspace = true }
 gamacros-bit-mask = { workspace = true }
 enigo = { workspace = true }
 ctrlc = { workspace = true }

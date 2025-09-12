@@ -4,7 +4,7 @@ use ahash::AHashMap;
 
 use gamacros_gamepad::{Axis as CtrlAxis, ControllerId};
 use gamacros_control::{Key, KeyCombo};
-use gamacros_profile::{
+use gamacros_workspace::{
     ArrowsParams, Axis as ProfileAxis, MouseParams, ScrollParams, StepperParams,
     StickMode, StickRules, StickSide,
 };

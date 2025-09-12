@@ -1,130 +1,44 @@
-use std::collections::HashMap;
 use std::sync::Arc;
+
 use ahash::AHashMap;
-use serde::Deserialize;
-
 use gamacros_control::KeyCombo;
+use gamacros_gamepad::Button;
 
-use crate::selector::Selector;
-
-use crate::{BundleId, ControllerSettingsMap, DEFAULT_SHELL};
-use crate::{
-    profile::{
-        AppRules, ArrowsParams, Axis, ButtonChord, ButtonRule, ButtonRules,
-        ControllerSettings, MouseParams, Profile, ScrollParams, StepperParams,
-        StickMode, StickRules, StickSide,
-    },
-    profile_common::parse_button_name,
-    ButtonAction, ProfileError,
+use crate::v1::profile::{ProfileV1ButtonRule, ProfileV1Stick};
+use crate::workspace::{
+    AppRules, ArrowsParams, Axis, ButtonAction, ButtonRule,
+    ButtonRules, ControllerSettings, ControllerSettingsMap, MouseParams, RuleMap,
+    ScrollParams, StepperParams, StickMode, StickRules, StickSide, Workspace,
 };
+use crate::ButtonChord;
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct ProfileV1 {
-    version: u8,
-    #[serde(default)]
-    controllers: Vec<ProfileV1ControllerParams>,
-    #[serde(default)]
-    blacklist: Vec<String>,
-    #[serde(default)]
-    groups: AHashMap<String, Vec<Box<str>>>,
-    #[serde(default)]
-    rules: AHashMap<Box<str>, ProfileV1App>, // bundle_id -> app mapping
-    #[serde(default)]
-    shell: Option<Box<str>>,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-#[serde(deny_unknown_fields)]
-struct ProfileV1App {
-    #[serde(default)]
-    pub buttons: AHashMap<String, ProfileV1ButtonRule>, // chord -> button rule
-    #[serde(default)]
-    pub sticks: AHashMap<String, ProfileV1Stick>, // side -> stick rules
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ProfileV1ButtonRule {
-    #[serde(default)]
-    pub vibrate: Option<u16>,
-    #[serde(default)]
-    pub keystroke: Option<String>,
-    #[serde(default)]
-    pub macros: Option<Vec<String>>,
-    #[serde(default)]
-    pub shell: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ProfileV1ControllerParams {
-    pub vid: u16,
-    pub pid: u16,
-    #[serde(default)]
-    pub remap: HashMap<String, String>, // button -> button
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ProfileV1Stick {
-    pub mode: String, // arrows | volume | brightness | scroll | mouse_move
-    #[serde(default)]
-    pub deadzone: Option<f32>,
-    // arrows
-    #[serde(default)]
-    pub repeat_delay_ms: Option<u64>,
-    #[serde(default)]
-    pub repeat_interval_ms: Option<u64>,
-    #[serde(default)]
-    pub invert_x: Option<bool>,
-    #[serde(default)]
-    pub invert_y: Option<bool>,
-    // stepper (volume/brightness)
-    #[serde(default)]
-    pub axis: Option<String>, // x | y
-    #[serde(default)]
-    pub invert: Option<bool>,
-    #[serde(default)]
-    pub min_interval_ms: Option<u64>,
-    #[serde(default)]
-    pub max_interval_ms: Option<u64>,
-    // mouse
-    #[serde(default)]
-    pub max_speed_px_s: Option<f32>,
-    #[serde(default)]
-    pub gamma: Option<f32>,
-    // scroll
-    #[serde(default)]
-    pub speed_lines_s: Option<f32>,
-    #[serde(default)]
-    pub horizontal: Option<bool>,
-}
-
-const COMMON_BUNDLE_ID: &str = "common";
+use super::Error;
+use super::profile::{ProfileV1, ProfileV1App, ProfileV1ControllerSettings};
+use super::strings::COMMON_BUNDLE_ID;
+use super::selector::Selector;
 
 impl ProfileV1 {
-    pub fn to_settings(input: &str) -> Result<Profile, ProfileError> {
-        let mut raw: ProfileV1 = serde_yaml::from_str(input)?;
-        if raw.version != 1 {
-            return Err(ProfileError::UnsupportedVersion(raw.version));
+    pub fn to_workspace(&self) -> Result<Workspace, Error> {
+        if self.version != 1 {
+            // This code point should never be reached.
+            panic!("unsupported version: {}", self.version);
         }
 
-        let mut rules: AHashMap<BundleId, AppRules> = AHashMap::new();
+        let mut rules: RuleMap = AHashMap::new();
 
-        let common_rules = raw
+        let common_rules = self
             .rules
-            .remove(COMMON_BUNDLE_ID)
-            .map(|r| parse_app_rules(r, COMMON_BUNDLE_ID))
+            .get(COMMON_BUNDLE_ID)
+            .map(|r| parse_app_rules(r.clone(), COMMON_BUNDLE_ID))
             .transpose()?;
 
         if let Some(common_rules) = common_rules.clone() {
             rules.insert(COMMON_BUNDLE_ID.into(), common_rules);
         }
 
-        for (selector, app_actions) in raw.rules.into_iter() {
+        for (selector, app_actions) in self.rules.clone().into_iter() {
             let parsed_selector = Selector::parse(&selector)?;
-            let bundle_ids = parsed_selector.materialize(&raw.groups)?;
+            let bundle_ids = parsed_selector.materialize(&self.groups)?;
             let app_rules = parse_app_rules(app_actions, &selector)?;
 
             for bundle_id in bundle_ids {
@@ -151,22 +65,74 @@ impl ProfileV1 {
             }
         }
 
-        let controllers = parse_controller_settings(raw.controllers)?;
-        let blacklist = raw.blacklist.into_iter().collect();
+        let controllers = parse_controller_settings(&self.controllers)?;
+        let blacklist = self.blacklist.clone().into_iter().collect();
 
-        Ok(Profile {
+        Ok(Workspace {
             blacklist,
             controllers,
             rules,
-            shell: raw.shell.unwrap_or(DEFAULT_SHELL.into()),
+            shell: self.shell.clone(),
         })
     }
 }
 
-fn parse_app_rules(
-    raw: ProfileV1App,
-    bundle_id: &str,
-) -> Result<AppRules, ProfileError> {
+fn parse_controller_settings(
+    raw: &Vec<ProfileV1ControllerSettings>,
+) -> Result<ControllerSettingsMap, Error> {
+    let mut settings: ControllerSettingsMap = AHashMap::new();
+    for raw_settings in raw {
+        let device_id = (raw_settings.vid, raw_settings.pid);
+        let device_settings = parse_device_remap(raw_settings)?;
+        settings.insert(device_id, device_settings);
+    }
+    Ok(settings)
+}
+
+/// Parse a v1 device remap.
+fn parse_device_remap(
+    raw: &ProfileV1ControllerSettings,
+) -> Result<ControllerSettings, Error> {
+    let mut remap = AHashMap::new();
+    for (k, v) in raw.remap.iter() {
+        let from = parse_button_name(k)?;
+        let to = parse_button_name(v)?;
+        remap.insert(from, to);
+    }
+    Ok(ControllerSettings { mapping: remap })
+}
+
+/// Parse a button name into a `Button` enum.
+fn parse_button_name(name: &str) -> Result<Button, Error> {
+    Ok(match name {
+        "a" => Button::A,
+        "b" => Button::B,
+        "x" => Button::X,
+        "y" => Button::Y,
+
+        "back" | "select" => Button::Back,
+        "guide" | "home" => Button::Guide,
+        "start" => Button::Start,
+
+        "ls" | "left_stick" => Button::LeftStick,
+        "rs" | "right_stick" => Button::RightStick,
+
+        "lb" | "left_bumper" | "left_shoulder" | "l1" => Button::LeftShoulder,
+        "rb" | "right_bumper" | "right_shoulder" | "r1" => Button::RightShoulder,
+        "lt" | "left_trigger" | "l2" => Button::LeftTrigger,
+        "rt" | "right_trigger" | "r2" => Button::RightTrigger,
+
+        "dpad_up" => Button::DPadUp,
+        "dpad_down" => Button::DPadDown,
+        "dpad_left" => Button::DPadLeft,
+        "dpad_right" => Button::DPadRight,
+
+        _ => return Err(Error::InvalidButton(name.to_string())),
+    })
+}
+
+/// Parse a v1 app rules.
+fn parse_app_rules(raw: ProfileV1App, bundle_id: &str) -> Result<AppRules, Error> {
     let mut button_rules: ButtonRules = AHashMap::new();
     let mut stick_rules: StickRules = AHashMap::new();
 
@@ -177,7 +143,7 @@ fn parse_app_rules(
     }
 
     for (side, stick_raw) in raw.sticks.into_iter() {
-        let side = StickSide::parse(&side)?;
+        let side = parse_stick_side(&side)?;
         let mode = parse_stick_mode(stick_raw)?;
         stick_rules.insert(side, mode);
     }
@@ -188,31 +154,15 @@ fn parse_app_rules(
     })
 }
 
-fn parse_controller_settings(
-    raw: Vec<ProfileV1ControllerParams>,
-) -> Result<ControllerSettingsMap, ProfileError> {
-    let mut settings: ControllerSettingsMap = AHashMap::new();
-    for raw_settings in raw {
-        let device_id = (raw_settings.vid, raw_settings.pid);
-        let device_settings = parse_device_remap(raw_settings)?;
-        settings.insert(device_id, device_settings);
-    }
-    Ok(settings)
+fn parse_stick_side(raw: &str) -> Result<StickSide, Error> {
+    Ok(match raw.to_lowercase().as_str() {
+        "left" => StickSide::Left,
+        "right" => StickSide::Right,
+        other => return Err(Error::InvalidStickSide(other.to_string())),
+    })
 }
 
-fn parse_device_remap(
-    raw: ProfileV1ControllerParams,
-) -> Result<ControllerSettings, ProfileError> {
-    let mut remap = AHashMap::new();
-    for (k, v) in raw.remap.into_iter() {
-        let from = parse_button_name(&k)?;
-        let to = parse_button_name(&v)?;
-        remap.insert(from, to);
-    }
-    Ok(ControllerSettings { mapping: remap })
-}
-
-fn parse_chord(input: &str) -> Result<ButtonChord, ProfileError> {
+fn parse_chord(input: &str) -> Result<ButtonChord, Error> {
     let mut set = ButtonChord::empty();
     for part in input.split('+') {
         let name = part.trim().to_lowercase();
@@ -220,30 +170,16 @@ fn parse_chord(input: &str) -> Result<ButtonChord, ProfileError> {
         set.insert(button);
     }
     if set.is_empty() {
-        Err(ProfileError::InvalidTrigger(input.to_string()))
+        Err(Error::InvalidTrigger(input.to_string()))
     } else {
         Ok(set)
     }
 }
 
-fn parse_keystroke(input: &str) -> Result<KeyCombo, ProfileError> {
-    input
-        .parse::<KeyCombo>()
-        .map_err(ProfileError::KeyParseError)
-}
-
-fn parse_macros(input: &[String]) -> Result<Vec<KeyCombo>, ProfileError> {
-    input
-        .iter()
-        .map(|m| m.as_str())
-        .map(parse_keystroke)
-        .collect::<Result<Vec<_>, _>>()
-}
-
 fn parse_button_rule(
     raw: ProfileV1ButtonRule,
     target_name: &str,
-) -> Result<ButtonRule, ProfileError> {
+) -> Result<ButtonRule, Error> {
     let action = match (raw.keystroke, raw.macros, raw.shell) {
         (Some(keystroke), None, None) => {
             let keystroke = parse_keystroke(&keystroke)?;
@@ -254,7 +190,7 @@ fn parse_button_rule(
             ButtonAction::Macros(Arc::new(macros))
         }
         (None, None, Some(shell)) => ButtonAction::Shell(shell),
-        _ => return Err(ProfileError::InvalidActions(target_name.to_string())),
+        _ => return Err(Error::InvalidActions(target_name.to_string())),
     };
 
     Ok(ButtonRule {
@@ -263,7 +199,19 @@ fn parse_button_rule(
     })
 }
 
-fn parse_stick_mode(raw: ProfileV1Stick) -> Result<StickMode, ProfileError> {
+fn parse_keystroke(input: &str) -> Result<KeyCombo, Error> {
+    input.parse::<KeyCombo>().map_err(Error::KeyParse)
+}
+
+fn parse_macros(input: &[String]) -> Result<Vec<KeyCombo>, Error> {
+    input
+        .iter()
+        .map(|m| m.as_str())
+        .map(parse_keystroke)
+        .collect::<Result<Vec<_>, _>>()
+}
+
+fn parse_stick_mode(raw: ProfileV1Stick) -> Result<StickMode, Error> {
     let deadzone = raw.deadzone.unwrap_or(0.15);
     let mode = match raw.mode.to_lowercase().as_str() {
         "arrows" => {
@@ -302,7 +250,7 @@ fn parse_stick_mode(raw: ProfileV1Stick) -> Result<StickMode, ProfileError> {
                     "x" => Axis::X,
                     "y" => Axis::Y,
                     other => {
-                        return Err(ProfileError::InvalidTrigger(format!(
+                        return Err(Error::InvalidTrigger(format!(
                             "invalid axis: {other}"
                         )))
                     }
@@ -322,7 +270,7 @@ fn parse_stick_mode(raw: ProfileV1Stick) -> Result<StickMode, ProfileError> {
                     "x" => Axis::X,
                     "y" => Axis::Y,
                     other => {
-                        return Err(ProfileError::InvalidTrigger(format!(
+                        return Err(Error::InvalidTrigger(format!(
                             "invalid axis: {other}"
                         )))
                     }
@@ -337,7 +285,7 @@ fn parse_stick_mode(raw: ProfileV1Stick) -> Result<StickMode, ProfileError> {
             StickMode::Brightness(params)
         }
         other => {
-            return Err(ProfileError::InvalidTrigger(format!(
+            return Err(Error::InvalidTrigger(format!(
                 "invalid stick mode: {other}"
             )))
         }

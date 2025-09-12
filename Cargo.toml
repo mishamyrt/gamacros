@@ -2,7 +2,7 @@
 members = [
   "crates/gamacros-control",
   "crates/gamacros-gamepad",
-  "crates/gamacros-profile",
+  "crates/gamacros-workspace",
   "crates/gamacros-bit/derive",
   "crates/gamacros-bit/mask",
   "crates/gamacrosd",
@@ -22,19 +22,20 @@ license = "MIT"
 gamacrosd = { path = "crates/gamacrosd" }
 gamacros-control = { path = "crates/gamacros-control" }
 gamacros-gamepad = { path = "crates/gamacros-gamepad" }
-gamacros-profile = { path = "crates/gamacros-profile" }
+gamacros-workspace = { path = "crates/gamacros-workspace" }
 gamacros-bit-derive = { path = "crates/gamacros-bit/derive" }
 gamacros-bit-mask = { path = "crates/gamacros-bit/mask" }
 nsworkspace = "0.2.0"
 lunchctl = "0.1.0"
 
-ctrlc = "3.4.5"
 crossbeam-channel = "0.5"
 dashmap = "5"
 sdl2 = { version = "0.37" }
 ahash = "0.8"
+notify = "8.2.0"
 
-syn = { version = "2", features = ["full"] }
+# Proc macros
+syn = "2"
 quote = "1"
 proc-macro2 = "1"
 
@@ -42,11 +43,14 @@ thiserror = "2.0.12"
 
 enigo = { version = "0.6.0" }
 
-serde = { version = "1.0", features = ["derive"] }
+# Parsing
+serde = "1.0"
 serde_yaml = "0.9.34+deprecated"
 serde_derive = "1.0.219"
 
-clap = { version = "4.5.38" }
+# CLI & Logging
+ctrlc = "3.4.5"
+clap = "4.5.38"
 chrono = "0.4.30"
 log = "0.4.26"
 colored = "3.0.0"

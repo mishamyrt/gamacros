@@ -435,7 +435,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "gamacros-profile"
+name = "gamacros-workspace"
 version = "0.0.0"
 dependencies = [
  "ahash",
@@ -463,7 +463,7 @@ dependencies = [
  "gamacros-bit-mask",
  "gamacros-control",
  "gamacros-gamepad",
- "gamacros-profile",
+ "gamacros-workspace",
  "log",
  "lunchctl",
  "nsworkspace",

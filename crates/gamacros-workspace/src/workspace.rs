@@ -2,32 +2,29 @@ use std::sync::Arc;
 use core::str;
 use ahash::{AHashMap, AHashSet};
 
-use gamacros_bit_mask::Bitmask;
 use gamacros_gamepad::Button;
 use gamacros_control::KeyCombo;
 
-use crate::ProfileError;
-
-pub const DEFAULT_SHELL: &str = "/bin/sh";
-
-/// A macOS application bundle ID.
-pub type BundleId = Box<str>;
-
-/// A controller ID.
-/// Vendor ID and product ID.
-pub type ControllerId = (u16, u16);
-
-/// A chord of buttons.
-pub type ButtonChord = Bitmask<Button>;
-
-/// A binding of stick sides to rules.
-pub type StickBinding = AHashMap<StickSide, StickMode>;
+use crate::{BundleId, ButtonChord, ControllerId};
 
 /// A set of rules to handle button presses for an app.
 pub type ButtonRules = AHashMap<ButtonChord, ButtonRule>;
 
 /// A set of rules to handle stick movements for an app.
 pub type StickRules = AHashMap<StickSide, StickMode>;
+
+/// Profile is a collection of rules and settings for controllers and applications.
+#[derive(Debug, Clone)]
+pub struct Workspace {
+    /// Controller settings.
+    pub controllers: ControllerSettingsMap,
+    /// Blacklist apps.
+    pub blacklist: AHashSet<String>,
+    /// App rules.
+    pub rules: RuleMap,
+    /// Shell to run for shell actions.
+    pub shell: Option<Box<str>>,
+}
 
 /// A set of rules to handle controller settings for an app.
 #[derive(Debug, Clone, Default)]
@@ -54,22 +51,6 @@ pub type RuleMap = AHashMap<BundleId, AppRules>;
 /// A set of rules to handle app settings for an app.
 pub type ControllerSettingsMap = AHashMap<ControllerId, ControllerSettings>;
 
-/// A set of rules to handle app settings for an app.
-pub type Blacklist = AHashSet<String>;
-
-/// Profile is a collection of rules and settings for controllers and applications.
-#[derive(Debug, Clone)]
-pub struct Profile {
-    /// Controller settings.
-    pub controllers: ControllerSettingsMap,
-    /// Blacklist apps.
-    pub blacklist: AHashSet<String>,
-    /// App rules.
-    pub rules: RuleMap,
-    /// Shell to run for shell actions.
-    pub shell: Box<str>,
-}
-
 /// A action for a gamepad button.
 #[derive(Debug, Clone)]
 pub enum ButtonAction {
@@ -90,16 +71,6 @@ pub struct ButtonRule {
 pub enum StickSide {
     Left,
     Right,
-}
-
-impl StickSide {
-    pub fn parse(raw: &str) -> Result<StickSide, ProfileError> {
-        Ok(match raw.to_lowercase().as_str() {
-            "left" => StickSide::Left,
-            "right" => StickSide::Right,
-            other => return Err(ProfileError::InvalidStickSide(other.to_string())),
-        })
-    }
 }
 
 /// An axis of a stick.
