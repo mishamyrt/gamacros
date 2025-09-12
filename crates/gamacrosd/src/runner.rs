@@ -6,23 +6,17 @@ use gamacros_gamepad::ControllerManager;
 
 use crate::{app::Action, print_error, print_info};
 
+const DEFAULT_SHELL: &str = "/bin/zsh";
+
 pub(crate) struct ActionRunner<'a> {
     keypress: &'a mut Performer,
     manager: &'a ControllerManager,
-    shell: Box<str>,
+    shell: Option<Box<str>>,
 }
 
 impl<'a> ActionRunner<'a> {
-    pub fn new(
-        keypress: &'a mut Performer,
-        manager: &'a ControllerManager,
-        shell: Box<str>,
-    ) -> Self {
-        Self {
-            keypress,
-            manager,
-            shell,
-        }
+    pub fn new(keypress: &'a mut Performer, manager: &'a ControllerManager) -> Self {
+        Self { keypress, manager, shell: None }
     }
 
     pub fn run(&mut self, action: Action) {
@@ -64,7 +58,7 @@ impl<'a> ActionRunner<'a> {
     }
 
     fn run_shell(&mut self, cmd: &str) -> Result<String, String> {
-        let shell = self.shell.clone();
+        let shell = self.shell.clone().unwrap_or(DEFAULT_SHELL.into());
         let result = Command::new(shell.into_string().as_str())
             .args(["-c", cmd])
             .output();
@@ -82,5 +76,9 @@ impl<'a> ActionRunner<'a> {
                 Err(e.to_string())
             }
         }
+    }
+
+    pub fn set_shell(&mut self, shell: Box<str>) {
+        self.shell = Some(shell);
     }
 }

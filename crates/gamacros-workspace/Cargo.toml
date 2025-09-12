@@ -11,10 +11,13 @@ repository = { workspace = true }
 license = { workspace = true }
 
 [dependencies]
-serde = { workspace = true, features = ["derive"] }
-serde_yaml = { workspace = true }
-thiserror = { workspace = true }
 gamacros-control = { workspace = true }
 gamacros-gamepad = { workspace = true }
 gamacros-bit-mask = { workspace = true }
+
+thiserror = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_yaml = { workspace = true }
 ahash = { workspace = true, features = ["serde"] }
+notify = { workspace = true }
+notify-debouncer-mini = { workspace = true }

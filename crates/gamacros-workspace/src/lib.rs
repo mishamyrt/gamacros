@@ -2,11 +2,14 @@ mod workspace;
 mod parse;
 mod resolve;
 mod v1;
+mod watcher;
 
 use thiserror::Error;
 
 use gamacros_bit_mask::Bitmask;
 use gamacros_gamepad::Button;
+
+pub use watcher::{WorkspaceWatcher, WorkspaceEvent};
 
 pub use parse::parse_profile;
 pub use workspace::{

@@ -3,7 +3,8 @@ mod logging;
 mod cli;
 mod runner;
 
-use std::{fs, process, time::Duration};
+use std::path::Path;
+use std::{process, time::Duration};
 
 use colored::Colorize;
 use crossbeam_channel::{select, unbounded};
@@ -14,14 +15,13 @@ use nsworkspace::{Event as ActivityEvent, Monitor, NotificationListener};
 
 use gamacros_gamepad::{ControllerEvent, ControllerManager};
 use gamacros_control::Performer;
-use gamacros_workspace::{parse_profile, resolve_profile, Workspace};
+use gamacros_workspace::{resolve_profile, WorkspaceEvent, WorkspaceWatcher};
 
 use crate::app::{Gamacros, ButtonPhase};
 use crate::cli::{Cli, Command};
 use crate::runner::ActionRunner;
 
 const APP_LABEL: &str = "co.myrt.gamacros";
-const DEFAULT_SHELL: &str = "/bin/zsh";
 
 fn main() -> process::ExitCode {
     let cli = Cli::parse();
@@ -31,10 +31,14 @@ fn main() -> process::ExitCode {
 
     match cli.command {
         Command::Run { profile } => {
-            let Some(profile) = load_workspace(profile.as_deref()) else {
-                return process::ExitCode::FAILURE;
+            let profile_path = match resolve_profile(profile.as_deref()) {
+                Ok(path) => path,
+                Err(e) => {
+                    print_error!("failed to resolve profile: {e}");
+                    return process::ExitCode::FAILURE;
+                }
             };
-            run_event_loop(profile);
+            run_event_loop(&profile_path);
         }
         Command::Start { profile } => {
             let profile_path = match resolve_profile(profile.as_deref()) {
@@ -153,33 +157,7 @@ fn setup_logging(verbose: bool, no_color: bool) {
     }
 }
 
-fn load_workspace(target_path: Option<&str>) -> Option<Workspace> {
-    let profile_path = match resolve_profile(target_path) {
-        Ok(path) => path,
-        Err(e) => {
-            print_error!("failed to resolve profile: {e}");
-            return None;
-        }
-    };
-    print_info!("loading profile from {}", profile_path.display());
-    let content = match fs::read_to_string(&profile_path) {
-        Ok(content) => content,
-        Err(e) => {
-            print_error!("failed to read profile: {e}");
-            return None;
-        }
-    };
-
-    match parse_profile(&content) {
-        Ok(profile) => Some(profile),
-        Err(e) => {
-            print_error!("failed to parse profile: {e}");
-            None
-        }
-    }
-}
-
-fn run_event_loop(workspace: Workspace) {
+fn run_event_loop(profile_path: &Path) {
     // Activity monitor must run on the main thread.
     // We keep its std::mpsc receiver and poll it from the event loop (no bridge thread).
     let Some((monitor, activity_std_rx, monitor_stop_tx)) = Monitor::new() else {
@@ -188,7 +166,7 @@ fn run_event_loop(workspace: Workspace) {
     };
 
     monitor.subscribe(NotificationListener::DidActivateApplication);
-    let mut gamacros = Gamacros::new(workspace);
+    let mut gamacros = Gamacros::new();
     if let Some(app) = monitor.get_active_application() {
         gamacros.set_active_app(&app)
     }
@@ -200,6 +178,8 @@ fn run_event_loop(workspace: Workspace) {
         let _ = monitor_stop_tx.send(());
     })
     .expect("failed to set Ctrl+C handler");
+
+    let profile_path = profile_path.to_owned();
 
     // Run the main event loop in a background thread while the main thread runs the monitor loop.
     let event_loop = std::thread::Builder::new()
@@ -213,8 +193,9 @@ fn run_event_loop(workspace: Workspace) {
         // Stick processing is owned by Gamacros now
         let ticker = crossbeam_channel::tick(Duration::from_millis(10));
 
-        let shell = gamacros.workspace.shell.clone().unwrap_or(DEFAULT_SHELL.into());
-        let mut action_runner = ActionRunner::new(&mut keypress, &manager, shell);
+        let (_watcher, workspace_rx) = WorkspaceWatcher::new_with_starting_event(&profile_path).expect("failed to start workspace watcher");
+
+        let mut action_runner = ActionRunner::new(&mut keypress, &manager);
 
         print_info!(
             "gamacrosd started. Listening for controller and activity events."
@@ -266,6 +247,23 @@ fn run_event_loop(workspace: Workspace) {
             while let Ok(msg) = activity_std_rx.try_recv() {
                 if let ActivityEvent::DidActivateApplication(bundle_id) = msg {
                     gamacros.set_active_app(&bundle_id)
+                }
+            }
+            while let Ok(msg) = workspace_rx.try_recv() {
+                match msg {
+                    WorkspaceEvent::Changed(workspace) => {
+                        print_info!("profile changed, updating workspace");
+                        if let Some(shell) = workspace.shell.clone() {
+                            action_runner.set_shell(shell);
+                        }
+                        gamacros.set_workspace(workspace);
+                    }
+                    WorkspaceEvent::Removed => {
+                        gamacros.remove_workspace();
+                    }
+                    WorkspaceEvent::Error(error) => {
+                        print_error!("profile error: {error}");
+                    }
                 }
             }
         }

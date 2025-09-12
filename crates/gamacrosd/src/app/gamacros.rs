@@ -35,7 +35,7 @@ struct ControllerState {
 }
 
 pub struct Gamacros {
-    pub workspace: Workspace,
+    pub workspace: Option<Workspace>,
     active_app: Box<str>,
     controllers: AHashMap<ControllerId, ControllerState>,
     sticks: RefCell<StickProcessor>,
@@ -44,9 +44,9 @@ pub struct Gamacros {
 }
 
 impl Gamacros {
-    pub fn new(workspace: Workspace) -> Self {
+    pub fn new() -> Self {
         Self {
-            workspace,
+            workspace: None,
             active_app: "".into(),
             controllers: AHashMap::new(),
             sticks: RefCell::new(StickProcessor::new()),
@@ -59,7 +59,19 @@ impl Gamacros {
         self.controllers.contains_key(&id)
     }
 
+    pub fn remove_workspace(&mut self) {
+        self.workspace = None;
+    }
+
+    pub fn set_workspace(&mut self, workspace: Workspace) {
+        self.workspace = Some(workspace);
+    }
+
     pub fn add_controller(&mut self, info: ControllerInfo) {
+        let Some(workspace) = self.workspace.as_ref() else {
+            print_debug!("add controller - no workspace set, ignoring");
+            return;
+        };
         print_info!(
             "add controller - {0} id={1} vid=0x{2:x} pid=0x{3:x}",
             info.name,
@@ -67,8 +79,7 @@ impl Gamacros {
             info.vendor_id,
             info.product_id
         );
-        let settings = self
-            .workspace
+        let settings = workspace
             .controllers
             .get(&(info.vendor_id, info.product_id))
             .cloned();
@@ -97,8 +108,12 @@ impl Gamacros {
         print_debug!("app change - {app}");
         self.active_app = app.into();
         self.sticks.borrow_mut().on_app_change();
-        self.active_stick_rules = self
-            .workspace
+        let Some(workspace) = self.workspace.as_ref() else {
+            print_debug!("app change - no workspace set, ignoring");
+            return;
+        };
+
+        self.active_stick_rules = workspace
             .rules
             .get(&*self.active_app)
             .map(|r| Arc::new(r.sticks.clone()));
@@ -147,7 +162,11 @@ impl Gamacros {
     ) {
         print_debug!("handle button - {id} {button:?} {phase:?}");
         let active_app = self.get_active_app();
-        let Some(app_rules) = self.workspace.rules.get(active_app) else {
+        let Some(workspace) = self.workspace.as_ref() else {
+            print_debug!("handle button - no workspace set, ignoring");
+            return;
+        };
+        let Some(app_rules) = workspace.rules.get(active_app) else {
             return;
         };
         let state = self
