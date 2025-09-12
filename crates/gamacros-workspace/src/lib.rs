@@ -11,8 +11,8 @@ use gamacros_gamepad::Button;
 pub use parse::parse_profile;
 pub use workspace::{
     Workspace, ButtonAction, ButtonRule, ControllerSettings, StickRules,
-    ArrowsParams, Axis, MouseParams, ScrollParams, StepperParams,
-    StickMode, StickSide,
+    ArrowsParams, Axis, MouseParams, ScrollParams, StepperParams, StickMode,
+    StickSide,
 };
 pub use resolve::resolve_profile;
 

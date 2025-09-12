@@ -10,7 +10,7 @@ pub fn parse_profile(input: &str) -> Result<Workspace, ProfileError> {
             let profile: ProfileV1 = serde_yaml::from_str(input)?;
             let workspace = profile.to_workspace()?;
             Ok(workspace)
-        },
+        }
         _ => Err(ProfileError::UnsupportedVersion(version)),
     }
 }
@@ -34,6 +34,9 @@ mod tests {
     #[test]
     fn parse_profile_yaml_error_when_version_missing() {
         let yaml = "controllers: []\n";
-        assert!(matches!(parse_profile(yaml), Err(ProfileError::YamlDeserializeError(_))));
+        assert!(matches!(
+            parse_profile(yaml),
+            Err(ProfileError::YamlDeserializeError(_))
+        ));
     }
 }

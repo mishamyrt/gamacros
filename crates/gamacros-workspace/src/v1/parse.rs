@@ -6,9 +6,9 @@ use gamacros_gamepad::Button;
 
 use crate::v1::profile::{ProfileV1ButtonRule, ProfileV1Stick};
 use crate::workspace::{
-    AppRules, ArrowsParams, Axis, ButtonAction, ButtonRule,
-    ButtonRules, ControllerSettings, ControllerSettingsMap, MouseParams, RuleMap,
-    ScrollParams, StepperParams, StickMode, StickRules, StickSide, Workspace,
+    AppRules, ArrowsParams, Axis, ButtonAction, ButtonRule, ButtonRules,
+    ControllerSettings, ControllerSettingsMap, MouseParams, RuleMap, ScrollParams,
+    StepperParams, StickMode, StickRules, StickSide, Workspace,
 };
 use crate::ButtonChord;
 
