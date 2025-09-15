@@ -16,7 +16,11 @@ pub(crate) struct ActionRunner<'a> {
 
 impl<'a> ActionRunner<'a> {
     pub fn new(keypress: &'a mut Performer, manager: &'a ControllerManager) -> Self {
-        Self { keypress, manager, shell: None }
+        Self {
+            keypress,
+            manager,
+            shell: None,
+        }
     }
 
     pub fn run(&mut self, action: Action) {

@@ -2,10 +2,10 @@ use std::time::Duration;
 use std::{fs, path::Path};
 use std::sync::mpsc;
 
-use notify::{
-    Config, Error as NotifyError, FsEventWatcher, RecursiveMode,
+use notify::{Config, Error as NotifyError, FsEventWatcher, RecursiveMode};
+use notify_debouncer_mini::{
+    new_debouncer_opt, DebounceEventResult, DebouncedEventKind, Debouncer,
 };
-use notify_debouncer_mini::{new_debouncer_opt, DebounceEventResult, DebouncedEventKind, Debouncer};
 use thiserror::Error;
 
 use crate::{parse_profile, ProfileError, Workspace};
@@ -66,31 +66,32 @@ impl WorkspaceWatcher {
         // select backend via fish operator, here PollWatcher backend
         let mut debouncer = new_debouncer_opt::<_, notify::FsEventWatcher>(
             debouncer_config,
-            move |events: DebounceEventResult| {
-                match events {
-                    Ok(events) => {
-                        for event in events {
-                            match event.kind {
-                                DebouncedEventKind::Any | DebouncedEventKind::AnyContinuous => {
-                                    if !path_c.exists() {
-                                        let _ = tx_c.send(WorkspaceEvent::Removed);
-                                    } else {
-                                        send_workspace_event(&path_c, &tx_c);
-                                    }
+            move |events: DebounceEventResult| match events {
+                Ok(events) => {
+                    for event in events {
+                        match event.kind {
+                            DebouncedEventKind::Any
+                            | DebouncedEventKind::AnyContinuous => {
+                                if !path_c.exists() {
+                                    let _ = tx_c.send(WorkspaceEvent::Removed);
+                                } else {
+                                    send_workspace_event(&path_c, &tx_c);
                                 }
-                                _ => {}
                             }
+                            _ => {}
                         }
                     }
-                    Err(event) => {
-                        let error = Error::Notify(event);
-                        let _ = tx_c.send(WorkspaceEvent::Error(error));
-                    }
+                }
+                Err(event) => {
+                    let error = Error::Notify(event);
+                    let _ = tx_c.send(WorkspaceEvent::Error(error));
                 }
             },
         )?;
 
-        debouncer.watcher().watch(path, RecursiveMode::NonRecursive)?;
+        debouncer
+            .watcher()
+            .watch(path, RecursiveMode::NonRecursive)?;
 
         Ok(Self { watcher: debouncer })
     }
