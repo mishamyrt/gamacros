@@ -1,0 +1,211 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mishamyrt.dev/gamacros/v1/gc_profile.schema.json",
+  "title": "gamacros profile (v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema version. Must be 1."
+    },
+    "controllers": {
+      "type": "array",
+      "description": "Per-device settings and button remaps.",
+      "default": [],
+      "items": { "$ref": "#/$defs/ControllerSettings" }
+    },
+    "shell": {
+      "type": "string",
+      "description": "Shell binary used to execute shell actions (e.g., /bin/zsh)."
+    },
+    "blacklist": {
+      "type": "array",
+      "description": "Bundle IDs to ignore when matching apps.",
+      "default": [],
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "groups": {
+      "type": "object",
+      "description": "Named app groups used by selectors (values are bundle IDs).",
+      "default": {},
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "string", "minLength": 1 }
+      }
+    },
+    "rules": {
+      "type": "object",
+      "description": "Rules per selector or for all apps via the special 'common' key.",
+      "default": {},
+      "properties": {
+        "common": { "$ref": "#/$defs/AppRules" }
+      },
+      "additionalProperties": { "$ref": "#/$defs/AppRules" }
+    }
+  },
+  "$defs": {
+    "AppRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "buttons": { "$ref": "#/$defs/ButtonsMap" },
+        "sticks": { "$ref": "#/$defs/SticksMap" }
+      },
+      "default": {}
+    },
+    "ButtonsMap": {
+      "type": "object",
+      "description": "Map of button chords (e.g., 'l2+r2', 'a', 'start') to actions.",
+      "default": {},
+      "additionalProperties": { "$ref": "#/$defs/ButtonRule" }
+    },
+    "SticksMap": {
+      "type": "object",
+      "description": "Stick rules keyed by side ('left' or 'right').",
+      "default": {},
+      "propertyNames": { "pattern": "^([Ll]eft|[Rr]ight)$" },
+      "additionalProperties": { "$ref": "#/$defs/Stick" }
+    },
+    "ButtonRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "vibrate": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "Optional vibration value."
+        },
+        "keystroke": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Single key combo (e.g., 'cmd+dot', 'enter')."
+        },
+        "macros": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Sequence of key combos executed in order."
+        },
+        "shell": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Shell command executed using the top-level 'shell' if set."
+        }
+      },
+      "oneOf": [
+        {
+          "required": ["keystroke"],
+          "not": { "anyOf": [ { "required": ["macros"] }, { "required": ["shell"] } ] }
+        },
+        {
+          "required": ["macros"],
+          "not": { "anyOf": [ { "required": ["keystroke"] }, { "required": ["shell"] } ] }
+        },
+        {
+          "required": ["shell"],
+          "not": { "anyOf": [ { "required": ["keystroke"] }, { "required": ["macros"] } ] }
+        }
+      ]
+    },
+    "Stick": {
+      "oneOf": [
+        { "$ref": "#/$defs/StickArrows" },
+        { "$ref": "#/$defs/StickMouseMove" },
+        { "$ref": "#/$defs/StickScroll" },
+        { "$ref": "#/$defs/StickStepper" }
+      ]
+    },
+    "StickArrows": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": { "const": "arrows" },
+        "deadzone": { "type": "number", "minimum": 0 },
+        "repeat_delay_ms": { "type": "integer", "minimum": 0 },
+        "repeat_interval_ms": { "type": "integer", "minimum": 0 },
+        "invert_x": { "type": "boolean" },
+        "invert_y": { "type": "boolean" }
+      }
+    },
+    "StickMouseMove": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": { "const": "mouse_move" },
+        "deadzone": { "type": "number", "minimum": 0 },
+        "max_speed_px_s": { "type": "number", "minimum": 0 },
+        "gamma": { "type": "number", "minimum": 0 },
+        "invert_x": { "type": "boolean" },
+        "invert_y": { "type": "boolean" }
+      }
+    },
+    "StickScroll": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": { "const": "scroll" },
+        "deadzone": { "type": "number", "minimum": 0 },
+        "speed_lines_s": { "type": "number", "minimum": 0 },
+        "horizontal": { "type": "boolean" },
+        "invert_x": { "type": "boolean" },
+        "invert_y": { "type": "boolean" }
+      }
+    },
+    "StickStepper": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": { "enum": ["volume", "brightness"] },
+        "deadzone": { "type": "number", "minimum": 0 },
+        "axis": { "type": "string", "enum": ["x", "y"] },
+        "invert": { "type": "boolean" },
+        "min_interval_ms": { "type": "integer", "minimum": 0 },
+        "max_interval_ms": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "ControllerSettings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vid", "pid"],
+      "properties": {
+        "vid": { "type": "integer", "minimum": 0, "maximum": 65535 },
+        "pid": { "type": "integer", "minimum": 0, "maximum": 65535 },
+        "remap": {
+          "type": "object",
+          "description": "Mapping from button name to button name (lowercase identifiers).",
+          "default": {},
+          "propertyNames": { "enum": [
+            "a","b","x","y",
+            "back","select","guide","home","start",
+            "ls","left_stick","rs","right_stick",
+            "lb","left_bumper","left_shoulder","l1",
+            "rb","right_bumper","right_shoulder","r1",
+            "lt","left_trigger","l2",
+            "rt","right_trigger","r2",
+            "dpad_up","dpad_down","dpad_left","dpad_right"
+          ] },
+          "additionalProperties": { "type": "string", "enum": [
+            "a","b","x","y",
+            "back","select","guide","home","start",
+            "ls","left_stick","rs","right_stick",
+            "lb","left_bumper","left_shoulder","l1",
+            "rb","right_bumper","right_shoulder","r1",
+            "lt","left_trigger","l2",
+            "rt","right_trigger","r2",
+            "dpad_up","dpad_down","dpad_left","dpad_right"
+          ] }
+        }
+      }
+    }
+  }
+}
+
+
