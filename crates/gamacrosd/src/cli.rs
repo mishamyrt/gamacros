@@ -1,7 +1,7 @@
 use clap::Parser;
 use clap::Subcommand;
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Subcommand, PartialEq)]
 pub(crate) enum Command {
     /// Run the daemon in the foreground.
     Run {
@@ -19,6 +19,8 @@ pub(crate) enum Command {
     Stop,
     /// Show the status of the daemon.
     Status,
+    /// Observe the daemon's events.
+    Observe,
 }
 
 /// Highly effective conversion of a gamepad into a macropad for applications.

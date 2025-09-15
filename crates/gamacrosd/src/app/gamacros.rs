@@ -68,10 +68,6 @@ impl Gamacros {
     }
 
     pub fn add_controller(&mut self, info: ControllerInfo) {
-        let Some(workspace) = self.workspace.as_ref() else {
-            print_debug!("add controller - no workspace set, ignoring");
-            return;
-        };
         print_info!(
             "add controller - {0} id={1} vid=0x{2:x} pid=0x{3:x}",
             info.name,
@@ -79,6 +75,10 @@ impl Gamacros {
             info.vendor_id,
             info.product_id
         );
+
+        let Some(workspace) = self.workspace.as_ref() else {
+            return;
+        };
         let settings = workspace
             .controllers
             .get(&(info.vendor_id, info.product_id))
@@ -105,11 +105,18 @@ impl Gamacros {
     }
 
     pub fn set_active_app(&mut self, app: &str) {
-        print_debug!("app change - {app}");
+        if self.active_app.as_ref() == app {
+            return;
+        }
+        if self.active_app.as_ref() == "" {
+            print_debug!("got active app - {app}");
+        } else {
+            print_debug!("app change - {app}");
+        }
+
         self.active_app = app.into();
         self.sticks.borrow_mut().on_app_change();
         let Some(workspace) = self.workspace.as_ref() else {
-            print_debug!("app change - no workspace set, ignoring");
             return;
         };
 
@@ -163,7 +170,6 @@ impl Gamacros {
         print_debug!("handle button - {id} {button:?} {phase:?}");
         let active_app = self.get_active_app();
         let Some(workspace) = self.workspace.as_ref() else {
-            print_debug!("handle button - no workspace set, ignoring");
             return;
         };
         let Some(app_rules) = workspace.rules.get(active_app) else {

@@ -3,7 +3,7 @@ mod logging;
 mod cli;
 mod runner;
 
-use std::path::Path;
+use std::path::PathBuf;
 use std::{process, time::Duration};
 
 use colored::Colorize;
@@ -25,7 +25,9 @@ const APP_LABEL: &str = "co.myrt.gamacros";
 
 fn main() -> process::ExitCode {
     let cli = Cli::parse();
-    setup_logging(cli.verbose, cli.no_color);
+    if cli.command != Command::Observe {
+        setup_logging(cli.verbose, cli.no_color);
+    }
 
     let bin_path = std::env::current_exe().unwrap();
 
@@ -38,7 +40,7 @@ fn main() -> process::ExitCode {
                     return process::ExitCode::FAILURE;
                 }
             };
-            run_event_loop(&profile_path);
+            run_event_loop(Some(profile_path));
         }
         Command::Start { profile } => {
             let profile_path = match resolve_profile(profile.as_deref()) {
@@ -135,6 +137,10 @@ fn main() -> process::ExitCode {
                 }
             }
         }
+        Command::Observe => {
+            setup_logging(true, cli.no_color);
+            run_event_loop(None);
+        }
     }
 
     process::ExitCode::SUCCESS
@@ -147,7 +153,8 @@ fn setup_logging(verbose: bool, no_color: bool) {
         log::LevelFilter::Info
     };
     Dispatch::new()
-        .level(log_level)
+        .level(log::LevelFilter::Error) // Hide enigo logs
+        .level_for("gamacrosd", log_level)
         .chain(std::io::stdout())
         .apply()
         .expect("Unable to set up logger");
@@ -157,7 +164,7 @@ fn setup_logging(verbose: bool, no_color: bool) {
     }
 }
 
-fn run_event_loop(profile_path: &Path) {
+fn run_event_loop(maybe_profile_path: Option<PathBuf>) {
     // Activity monitor must run on the main thread.
     // We keep its std::mpsc receiver and poll it from the event loop (no bridge thread).
     let Some((monitor, activity_std_rx, monitor_stop_tx)) = Monitor::new() else {
@@ -179,7 +186,7 @@ fn run_event_loop(profile_path: &Path) {
     })
     .expect("failed to set Ctrl+C handler");
 
-    let profile_path = profile_path.to_owned();
+    let profile_path = maybe_profile_path.to_owned();
 
     // Run the main event loop in a background thread while the main thread runs the monitor loop.
     let event_loop = std::thread::Builder::new()
@@ -190,10 +197,14 @@ fn run_event_loop(profile_path: &Path) {
             ControllerManager::new().expect("failed to start controller manager");
         let rx = manager.subscribe();
         let mut keypress = Performer::new().expect("failed to start keypress");
-        // Stick processing is owned by Gamacros now
         let ticker = crossbeam_channel::tick(Duration::from_millis(10));
 
-        let (_watcher, workspace_rx) = WorkspaceWatcher::new_with_starting_event(&profile_path).expect("failed to start workspace watcher");
+        let maybe_monitor = profile_path
+            .map(|path| WorkspaceWatcher::new_with_starting_event(&path))
+            .transpose()
+            .expect("failed to start workspace watcher");
+
+        let maybe_workspace_rx = maybe_monitor.map(|w| w.1);
 
         let mut action_runner = ActionRunner::new(&mut keypress, &manager);
 
@@ -249,6 +260,10 @@ fn run_event_loop(profile_path: &Path) {
                     gamacros.set_active_app(&bundle_id)
                 }
             }
+            let Some(workspace_rx) = maybe_workspace_rx.as_ref() else {
+                continue;
+            };
+
             while let Ok(msg) = workspace_rx.try_recv() {
                 match msg {
                     WorkspaceEvent::Changed(workspace) => {

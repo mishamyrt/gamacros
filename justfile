@@ -12,8 +12,12 @@ export RUSTFLAGS := "-L native=" + BREW_LIBRARY_PATH + " -C link-args=-Wl,-rpath
 clean:
   cargo clean
 
-run *ARGS:
+start *ARGS:
   cargo run -v -p gamacrosd -- {{ARGS}}
+
+[group: 'build']
+install:
+  cargo install --path crates/gamacrosd
 
 [group: 'build']
 build: build-release
@@ -103,6 +107,3 @@ mem-xctrace duration='15':
   echo "Recording Instruments Memory Usage trace to $OUT for {{duration}}s..."
   xcrun xctrace record --template 'Memory Usage' --time-limit {{duration}}s --output "$OUT" --launch "$BIN_PATH_RELEASE"
   echo "Done. Open $OUT in Instruments to inspect allocations and footprint."
-
-install:
-  cargo install --path crates/gamacrosd
