@@ -18,11 +18,13 @@ impl<T: Bitable> Bitmask<T> {
     }
 
     /// Create an empty bitmask.
+    #[inline]
     pub const fn empty() -> Self {
         Self(0, PhantomData)
     }
 
     /// Create a new bitmask from a value.
+    #[inline]
     pub const fn from_value(value: u64) -> Self {
         Self(value, PhantomData)
     }
