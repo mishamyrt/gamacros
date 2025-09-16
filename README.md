@@ -2,132 +2,133 @@
   <img src="./docs/logo.svg" width="120" alt="gamacros logo" />
 </p>
 
-## gamacros
+## Gamacros
 
-Highly effective conversion of a gamepad into a macropad for applications. gamacros listens for controller input and maps it to keyboard shortcuts based on the currently active application.
+Highly effective conversion of a gamepad into a macropad for applications. Gamacros listens for controller input and maps it to keyboard shortcuts based on the currently active application.
 
 ### Highlights
-- **Per‑app mappings**: Switches rules automatically when the frontmost app changes (via `NSWorkspace`).
-- **YAML profiles**: Human‑readable `profile.yaml` with versioned schema.
+
+- **Per‑app mappings**: Switches rules automatically when the frontmost app changes.
+- **YAML profiles**: Human‑readable with versioned schema.
 - **Button chords and D‑pad**: Bind single buttons, multi‑button chords, or a D‑pad directional map.
 - **Device remapping**: Per‑VID/PID logical remaps (e.g., Nintendo A/B, X/Y swap).
 - **Haptics**: Optional short rumble on action, when supported.
-- **Local, fast, offline**: No network or cloud dependencies.
-
-### Status
-- Platform: **macOS** (the activity monitor uses Cocoa APIs). Other platforms may work for controller input but are not supported yet.
-- Rust: requires toolchain matching `rust-version` in workspace (`1.80`).
 
 ## How it works
-1. `gamacrosd` starts an SDL2 runtime to enumerate controllers and emit button events.
+
+1. `gamacrosd` (daemon) starts an SDL2 runtime to enumerate controllers and emit button events.
 2. A small Cocoa listener publishes the bundle identifier of the current frontmost app.
 3. On button press/release, the active app’s rules are evaluated. Matching rules generate actions.
-4. Actions send key events via `Enigo`; optional rumble is dispatched if supported.
-
-## Architecture
-- `crates/gamacrosd`: The daemon wiring everything together.
-- `crates/gamacros-controller`: Device discovery, events, rumble (SDL2 backend).
-- `crates/gamacros-activity`: macOS `NSWorkspace` listener for app focus changes.
-- `crates/gamacros-keypress`: Parsing and performing key combos (Enigo).
-- `crates/gamacros-profile`: Profile parser and runtime matcher.
-
-## Profile
-Place a `profile.yaml` in the working directory of `gamacrosd`. The daemon looks up `./profile.yaml` on startup (no hot‑reload yet).
-
-### Schema (version 1)
-- **version**: profile schema version (currently `1`).
-- **gamepads**: optional list of device remaps by USB `vid`/`pid`.
-  - `mapping`: logical button → logical button.
-- **apps**: mapping of macOS bundle id → list of rules.
-  - `trigger`: either a button chord string (e.g. `lt+rt`) or the literal `dpad`.
-  - `action`: key combo string (for chords) or per‑direction map (for `dpad`).
-  - `vibrate` (optional): milliseconds of rumble on action.
-  - `when` (optional): `pressed` (default) or `released`.
-
-### Example
-```yaml
-version: 1
-gamepads:
-  # Switch Pro Controller remap
-  - vid: 0x57e
-    pid: 0x2009
-    mapping:
-      a: b
-      b: a
-      x: y
-      y: x
-
-apps:
-  com.todesktop.230313mzl4w4u92: # Cursor
-    - trigger: lb
-      action: option+space
-    - trigger: rb
-      action: cmd+z
-    - trigger: lt+rt
-      action: cmd+shift+l
-      vibrate: 100
-    - trigger: y
-      action: cmd+z
-    - trigger: b
-      action: enter
-    - trigger: a
-      action: escape
-    - trigger: select
-      action: cmd+p
-    - trigger: start
-      action: cmd+shift+l
-    - trigger: dpad
-      action:
-        down: arrow_down
-        up: arrow_up
-        left: arrow_left
-        right: arrow_right
-```
-
-### Triggers
-- **Chord**: `a`, `b`, `x`, `y`, `lb`, `rb`, `lt`, `rt`, `start`, `select`/`back`, `guide`/`home`, `ls`/`left_stick`, `rs`/`right_stick`, `up`, `down`, `left`, `right`.
-  - Chords are `+`‑separated (e.g., `lt+rt`). Chord rules fire when all buttons in the set are held during the specified phase.
-- **D‑pad**: `trigger: dpad` with `action.up/down/left/right` mapping.
-- **Phase**: `when: pressed` (default) fires on press; `when: released` fires on release.
-
-### Actions (key combos)
-Key combo strings parse into modifiers and keys. Supported:
-- **Modifiers**: `ctrl`, `cmd`/`meta`/`command`/`super`, `alt`/`option`, `shift`.
-- **Navigation**: `arrow_up`, `arrow_down`, `arrow_left`, `arrow_right`, `home`, `end`, `page_up`, `page_down`.
-- **Editing**: `tab`, `space`/`spacebar`, `enter`/`return`, `delete`, `backspace`, `escape`/`esc`.
-- **System**: `volume_up`, `volume_down`, `volume_mute`, `brightness_up`, `brightness_down`, `illumination_up`, `illumination_down`.
-- **Function keys**: `f1` … `f20`.
-- **Single characters**: any single printable character (e.g., `a`).
-
-Examples: `cmd+shift+l`, `ctrl+alt+delete`, `option+space`, `f13`.
-
-### Device remapping
-Use `gamepads` to swap physical‑to‑logical buttons for specific USB devices. `vid`/`pid` accept hex (e.g., `0x57e`) or decimal.
-
-## Permissions
-To send key events on macOS, the process must be allowed under System Settings → Privacy & Security → Accessibility. The first run may prompt for permission; otherwise add the binary manually.
+4. Actions send key events; optional rumble is dispatched if supported.
 
 ## Usage
-- Put a `profile.yaml` next to the `gamacrosd` working directory.
-- Run the daemon and grant accessibility permission when prompted.
+
+- Put a `.gc_profile.yaml` in the `$HOME` directory.
+- Run the daemon in foreground mode (`gamacrosd run`) and grant accessibility permission when prompted.
 - Switch applications; rules for the frontmost app will apply automatically.
 
-Tip: To find a bundle id, you can use AppleScript (e.g., `id of app "AppName"`).
+Tip: To find a bundle id and controller vid/pid, you can use `run` in verbose mode (`-v`).
 
-## Installation
-TODO: add installation and build instructions (Homebrew/cargo, codesigning, launch agent, etc.).
+## Profile
+
+The daemon searches for the configuration in the following files (in this order):
+
+- `$HOME/Library/Application Support/gamacros/gc_profile.yaml`
+- `$HOME/.gc_profile.yaml`
+
+Custom profile path can be set with the `--profile` command line argument.
+
+### Schema (version 1)
+
+- **version**: profile schema version (must be `1`).
+- **controllers**: optional list of device remaps by USB `vid`/`pid` with `remap` map.
+- **shell**: optional shell path for shell actions (e.g., `/bin/zsh`).
+- **blacklist**: bundle IDs to ignore when matching apps.
+- **groups**: named lists of bundle IDs for reuse in selectors.
+- **rules**: mapping of selectors → app rules. Special key `common` applies to all.
+  - App rules:
+    - `buttons`: `<chord>` → `{ vibrate?, keystroke? | macros? | shell? }`
+    - `sticks`: `left|right` → `{ mode: arrows|mouse_move|scroll|volume|brightness, ... }`
+
+### Examples
+
+Minimal profile with per‑app rules via selectors and a device remap:
+
+```yaml
+version: 1
+
+controllers:
+  - vid: 0x57e
+    pid: 0x2009
+    remap:
+      a: b
+      b: a
+
+shell: /bin/zsh
+blacklist:
+  - Hades 2
+
+groups:
+  ide:
+    - com.microsoft.VSCode
+    - com.todesktop.230313mzl4w4u92 # Cursor
+  browser:
+    - com.google.Chrome
+    - com.apple.Safari
+
+rules:
+  common:
+    buttons:
+      l1:
+        vibrate: 100
+        keystroke: rcmd # Local voice recognition hold-to-talk
+      a:
+        keystroke: enter
+
+  $ide | $browser:
+    buttons:
+      y:
+        shell: echo "$"
+      select:
+        keystroke: cmd+dot
+      start:
+        keystroke: cmd+i
+      dpad_up:
+        keystroke: arrow_up
+      dpad_left:
+        keystroke: arrow_left
+      dpad_right:
+        keystroke: arrow_right
+      dpad_down:
+        keystroke: arrow_down
+      l2+r2:
+        vibrate: 100
+        macros: [cmd+a, backspace]
+    sticks:
+      right:
+        mode: mouse_move
+        max_speed_px_s: 1600
+```
+
+#### Buttons and chords
+
+- Use logical button names and join with `+` for chords (e.g., `l2+r2`, `lb`, `a`).
+- D‑pad directions are `dpad_up`, `dpad_down`, `dpad_left`, `dpad_right`.
+
+#### Key combos (quick reference)
+
+Examples: `cmd+shift+l`, `option+space`, `enter`, `backspace`, `arrow_up`.
+
+## Permissions
+
+To send key events on macOS, the process must be allowed under System Settings → Privacy & Security → Accessibility. The first run may prompt for permission; otherwise add the binary manually.
 
 ## Roadmap
-- Hot‑reload `profile.yaml` on changes.
-- Per‑app defaults and wildcards.
+
+- Button hold semantics.
+- Gyro/accelerometer support.
 - UI for editing profiles.
-- Windows/Linux support for activity monitoring and key synthesis.
-- Advanced inputs (sticks/axes) and tap/hold semantics.
 
 ## License
-MIT License. See `LICENSE`.
 
-## Acknowledgements
-- SDL2 for controller input and haptics.
-- Enigo for cross‑platform key synthesis.
-- Cocoa/Objective‑C runtime for macOS app activity.
+MIT License. See `LICENSE`.
