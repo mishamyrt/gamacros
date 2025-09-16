@@ -36,6 +36,10 @@ lint:
   cargo clippy
 
 [group: 'qa']
+fix *ARGS:
+  cargo clippy --fix --allow-dirty {{ARGS}}
+
+[group: 'qa']
 check-formatting:
   cargo fmt --all --check
 
