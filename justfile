@@ -1,5 +1,7 @@
 set export := true
 
+VERSION := "0.0.9"
+
 BIN_PATH_RELEASE := "target/release/gamacrosd"
 BIN_PATH_DEBUG := "target/debug/gamacrosd"
 
@@ -111,3 +113,21 @@ mem-xctrace duration='15':
   echo "Recording Instruments Memory Usage trace to $OUT for {{duration}}s..."
   xcrun xctrace record --template 'Memory Usage' --time-limit {{duration}}s --output "$OUT" --launch "$BIN_PATH_RELEASE"
   echo "Done. Open $OUT in Instruments to inspect allocations and footprint."
+
+[group: 'release']
+publish:
+	@python3 ./scripts/update_version.py {{VERSION}}
+	@cargo update -p gamacrosd
+	@git add \
+		justfile \
+		Cargo.lock \
+		crates/gamacrosd/Cargo.toml
+	@git commit -m "chore: release v{{VERSION}} 🔥"
+	@git tag v{{VERSION}}
+	@git-cliff -o CHANGELOG.md
+	@git tag -d v{{VERSION}}
+	@git add CHANGELOG.md
+	@git commit --amend --no-edit
+	@git tag -a v{{VERSION}} -m "release v{{VERSION}}"
+	@git push
+	@git push --tags
