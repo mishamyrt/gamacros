@@ -2,7 +2,7 @@ mod app;
 mod logging;
 mod cli;
 mod runner;
-mod control;
+mod api;
 
 use std::path::PathBuf;
 use std::{process, time::Duration};
@@ -18,9 +18,9 @@ use gamacros_control::Performer;
 use gamacros_workspace::{Workspace, ProfileEvent};
 
 use crate::app::{Gamacros, ButtonPhase};
-use crate::cli::{Cli, Command};
+use crate::cli::{Cli, Command, ControlCommand};
 use crate::runner::ActionRunner;
-use crate::control::{start_control_server, ControlCommand};
+use crate::api::{UnixSocket, ApiTransport, Command as ApiCommand};
 
 const APP_LABEL: &str = "co.myrt.gamacros";
 
@@ -130,6 +130,21 @@ fn main() -> process::ExitCode {
             logging::setup(true, cli.no_color);
             run_event_loop(None);
         }
+        Command::Command { workspace, command } => match command {
+            ControlCommand::Rumble { id, ms } => {
+                let workspace_path = resolve_workspace_path(workspace.as_deref());
+                match UnixSocket::new(workspace_path)
+                    .send_event(ApiCommand::Rumble { id, ms })
+                {
+                    Ok(_) => {
+                        print_info!("Rumbled controller {:?} for {ms}ms", id);
+                    }
+                    Err(e) => {
+                        print_error!("failed to send rumble command: {e}");
+                    }
+                };
+            }
+        },
     }
 
     process::ExitCode::SUCCESS
@@ -176,10 +191,11 @@ fn run_event_loop(maybe_workspace_path: Option<PathBuf>) {
     let workspace_path = maybe_workspace_path.to_owned();
 
     // Start control socket on the main thread and forward commands into the event loop.
-    let (control_tx, control_rx) = unbounded::<ControlCommand>();
+    let (api_tx, api_rx) = unbounded::<ApiCommand>();
     let _control_handle = workspace_path.clone().map(|workspace_path| {
-        start_control_server(workspace_path, control_tx)
-            .expect("failed to start control server")
+        UnixSocket::new(workspace_path)
+            .listen_events(api_tx)
+            .expect("failed to start api server")
     });
 
     // Run the main event loop in a background thread while the main thread runs the monitor loop.
@@ -252,9 +268,9 @@ fn run_event_loop(maybe_workspace_path: Option<PathBuf>) {
                         }
                     }
                 }
-                recv(control_rx) -> cmd => {
+                recv(api_rx) -> cmd => {
                     match cmd {
-                        Ok(ControlCommand::Rumble { id, ms }) => {
+                        Ok(ApiCommand::Rumble { id, ms }) => {
                             match id {
                                 Some(cid) => {
                                     action_runner.run(crate::app::Action::Rumble { id: cid, ms });
