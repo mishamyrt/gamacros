@@ -7,13 +7,13 @@ pub(crate) enum Command {
     Run {
         /// The profile to run
         #[clap(short, long)]
-        profile: Option<String>,
+        workspace: Option<String>,
     },
     /// Start daemon in the background.
     Start {
         /// The directory containing the profile
         #[clap(short, long)]
-        profile: Option<String>,
+        workspace: Option<String>,
     },
     /// Stop the daemon.
     Stop,

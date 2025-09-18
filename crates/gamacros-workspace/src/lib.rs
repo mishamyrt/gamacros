@@ -1,23 +1,23 @@
-mod workspace;
-mod parse;
-mod resolve;
+mod profile;
+mod profile_parse;
 mod v1;
-mod watcher;
+mod profile_watcher;
+mod workspace;
 
 use thiserror::Error;
 
 use gamacros_bit_mask::Bitmask;
 use gamacros_gamepad::Button;
 
-pub use watcher::{WorkspaceWatcher, WorkspaceEvent};
+pub use profile_watcher::{ProfileWatcher, ProfileEvent};
 
-pub use parse::parse_profile;
-pub use workspace::{
-    Workspace, ButtonAction, ButtonRule, ControllerSettings, StickRules,
-    ArrowsParams, Axis, MouseParams, ScrollParams, StepperParams, StickMode,
-    StickSide,
+pub use profile_parse::parse_profile;
+pub use profile::{
+    Profile, ButtonAction, ButtonRule, ControllerSettings, StickRules, ArrowsParams,
+    Axis, MouseParams, ScrollParams, StepperParams, StickMode, StickSide,
 };
-pub use resolve::resolve_profile;
+// pub use profile::resolve_profile;
+pub use workspace::Workspace;
 
 /// A macOS application bundle ID.
 pub type BundleId = Box<str>;
@@ -30,20 +30,16 @@ pub type ControllerId = (u16, u16);
 pub type ButtonChord = Bitmask<Button>;
 
 #[derive(Debug, Error)]
-pub enum ProfileError {
-    #[error("yaml deserialize error: {0}")]
-    YamlDeserializeError(#[from] serde_yaml::Error),
-    #[error("unsupported version: {0}")]
-    UnsupportedVersion(u8),
-    #[error("v1 profile error: {0}")]
-    V1ProfileError(#[from] v1::Error),
+pub enum WorkspaceError {
+    #[error("profile error: {0}")]
+    ProfileError(#[from] profile::ProfileError),
+    #[error("watcher error: {0}")]
+    WatcherError(#[from] profile_watcher::WatcherError),
 
     #[error("environment variable not set: {0}")]
     EnvVarNotSet(String),
-    #[error("current directory not set")]
-    CurrentDirNotSet,
-    #[error("profile not found: {0}")]
-    ProfileNotFound(String),
-    #[error("path error: {0}")]
-    PathError(#[from] std::io::Error),
+    #[error("path is not a directory: {0}")]
+    PathIsNotDirectory(String),
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
 }

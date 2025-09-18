@@ -8,7 +8,7 @@ use gamacros_control::KeyCombo;
 use gamacros_bit_mask::Bitmask;
 use gamacros_gamepad::{Button, ControllerId, ControllerInfo, Axis as CtrlAxis};
 use gamacros_workspace::{
-    ButtonAction, ButtonRule, ControllerSettings, Workspace, StickRules,
+    ButtonAction, ButtonRule, ControllerSettings, Profile, StickRules,
 };
 
 use crate::{app::ButtonPhase, print_debug, print_info};
@@ -35,7 +35,7 @@ struct ControllerState {
 }
 
 pub struct Gamacros {
-    pub workspace: Option<Workspace>,
+    pub workspace: Option<Profile>,
     active_app: Box<str>,
     controllers: AHashMap<ControllerId, ControllerState>,
     sticks: RefCell<StickProcessor>,
@@ -63,7 +63,7 @@ impl Gamacros {
         self.workspace = None;
     }
 
-    pub fn set_workspace(&mut self, workspace: Workspace) {
+    pub fn set_workspace(&mut self, workspace: Profile) {
         self.workspace = Some(workspace);
     }
 

@@ -1,131 +1,59 @@
-use std::sync::Arc;
-use core::str;
-use ahash::{AHashMap, AHashSet};
+use std::path::{Path, PathBuf};
 
-use gamacros_gamepad::Button;
-use gamacros_control::KeyCombo;
+use crate::WorkspaceError;
+use crate::{profile_watcher::ProfileEventReceiver, ProfileWatcher};
 
-use crate::{BundleId, ButtonChord, ControllerId};
+const DEFAULT_WORKSPACE_PATH: &str = "Library/Application Support/gamacros";
+const PROFILE_FILE_NAME: &str = "gc_profile.yaml";
 
-/// A set of rules to handle button presses for an app.
-pub type ButtonRules = AHashMap<ButtonChord, ButtonRule>;
-
-/// A set of rules to handle stick movements for an app.
-pub type StickRules = AHashMap<StickSide, StickMode>;
-
-/// Profile is a collection of rules and settings for controllers and applications.
-#[derive(Debug, Clone)]
 pub struct Workspace {
-    /// Controller settings.
-    pub controllers: ControllerSettingsMap,
-    /// Blacklist apps.
-    pub blacklist: AHashSet<String>,
-    /// App rules.
-    pub rules: RuleMap,
-    /// Shell to run for shell actions.
-    pub shell: Option<Box<str>>,
+    path: PathBuf,
 }
 
-/// A set of rules to handle controller settings for an app.
-#[derive(Debug, Clone, Default)]
-pub struct AppRules {
-    pub buttons: ButtonRules,
-    pub sticks: StickRules,
-}
+impl Workspace {
+    pub fn new(path: Option<&Path>) -> Result<Self, WorkspaceError> {
+        let path = {
+            if let Some(path) = path {
+                path.to_owned()
+            } else {
+                Self::default_path()?
+            }
+        };
 
-/// Controller parameters.
-#[derive(Debug, Clone, Default)]
-pub struct ControllerSettings {
-    pub mapping: AHashMap<Button, Button>,
-}
+        if !path.exists() {
+            std::fs::create_dir_all(&path)?;
+        } else if !path.is_dir() {
+            return Err(WorkspaceError::PathIsNotDirectory(
+                path.display().to_string(),
+            ));
+        }
 
-impl ControllerSettings {
-    pub fn new(mapping: AHashMap<Button, Button>) -> Self {
-        Self { mapping }
+        Ok(Self { path })
     }
-}
 
-/// A set of rules to handle app settings for an app.
-pub type RuleMap = AHashMap<BundleId, AppRules>;
+    pub fn start_profile_watcher(
+        &self,
+    ) -> Result<(ProfileWatcher, ProfileEventReceiver), WorkspaceError> {
+        let profile_path = self.profile_path();
 
-/// A set of rules to handle app settings for an app.
-pub type ControllerSettingsMap = AHashMap<ControllerId, ControllerSettings>;
+        ProfileWatcher::new_with_starting_event(&profile_path)
+            .map_err(WorkspaceError::WatcherError)
+    }
 
-/// A action for a gamepad button.
-#[derive(Debug, Clone)]
-pub enum ButtonAction {
-    Keystroke(Arc<KeyCombo>),
-    Macros(Arc<Vec<KeyCombo>>),
-    Shell(String),
-}
+    pub fn path(&self) -> PathBuf {
+        self.path.clone()
+    }
 
-/// A rule for a gamepad button.
-#[derive(Debug, Clone)]
-pub struct ButtonRule {
-    pub action: ButtonAction,
-    pub vibrate: Option<u16>,
-}
+    pub fn profile_path(&self) -> PathBuf {
+        self.path.join(PROFILE_FILE_NAME)
+    }
 
-/// A side of a stick.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum StickSide {
-    Left,
-    Right,
-}
+    pub fn default_path() -> Result<PathBuf, WorkspaceError> {
+        let path = std::env::var("HOME")
+            .map(PathBuf::from)
+            .map(|p| p.join(DEFAULT_WORKSPACE_PATH))
+            .map_err(|_| WorkspaceError::EnvVarNotSet("HOME".to_string()))?;
 
-/// An axis of a stick.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Axis {
-    X,
-    Y,
-}
-
-/// A mode of a gamepad stick.
-#[derive(Debug, Clone)]
-pub enum StickMode {
-    Arrows(ArrowsParams),
-    Volume(StepperParams),
-    Brightness(StepperParams),
-    MouseMove(MouseParams),
-    Scroll(ScrollParams),
-}
-
-/// Parameters for the arrows mode.
-#[derive(Debug, Clone)]
-pub struct ArrowsParams {
-    pub deadzone: f32,
-    pub repeat_delay_ms: u64,
-    pub repeat_interval_ms: u64,
-    pub invert_x: bool,
-    pub invert_y: bool,
-}
-
-/// Parameters for the volume/brightness modes.
-#[derive(Debug, Clone)]
-pub struct StepperParams {
-    pub axis: Axis,
-    pub deadzone: f32,
-    pub min_interval_ms: u64,
-    pub max_interval_ms: u64,
-    pub invert: bool,
-}
-
-/// Parameters for the mouse move mode.
-#[derive(Debug, Clone)]
-pub struct MouseParams {
-    pub deadzone: f32,
-    pub max_speed_px_s: f32,
-    pub gamma: f32,
-    pub invert_x: bool,
-    pub invert_y: bool,
-}
-
-/// Parameters for the scroll mode.
-#[derive(Debug, Clone)]
-pub struct ScrollParams {
-    pub deadzone: f32,
-    pub speed_lines_s: f32,
-    pub horizontal: bool,
-    pub invert_x: bool,
-    pub invert_y: bool,
+        Ok(path)
+    }
 }

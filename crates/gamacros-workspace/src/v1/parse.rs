@@ -5,10 +5,10 @@ use gamacros_control::KeyCombo;
 use gamacros_gamepad::Button;
 
 use crate::v1::profile::{ProfileV1ButtonRule, ProfileV1Stick};
-use crate::workspace::{
+use crate::profile::{
     AppRules, ArrowsParams, Axis, ButtonAction, ButtonRule, ButtonRules,
     ControllerSettings, ControllerSettingsMap, MouseParams, RuleMap, ScrollParams,
-    StepperParams, StickMode, StickRules, StickSide, Workspace,
+    StepperParams, StickMode, StickRules, StickSide, Profile,
 };
 use crate::ButtonChord;
 
@@ -18,7 +18,7 @@ use super::strings::COMMON_BUNDLE_ID;
 use super::selector::Selector;
 
 impl ProfileV1 {
-    pub fn to_workspace(&self) -> Result<Workspace, Error> {
+    pub fn parse(&self) -> Result<Profile, Error> {
         if self.version != 1 {
             // This code point should never be reached.
             panic!("unsupported version: {}", self.version);
@@ -68,7 +68,7 @@ impl ProfileV1 {
         let controllers = parse_controller_settings(&self.controllers)?;
         let blacklist = self.blacklist.clone().into_iter().collect();
 
-        Ok(Workspace {
+        Ok(Profile {
             blacklist,
             controllers,
             rules,

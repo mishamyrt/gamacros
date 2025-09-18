@@ -8,10 +8,11 @@ use notify_debouncer_mini::{
 };
 use thiserror::Error;
 
-use crate::{parse_profile, ProfileError, Workspace};
+use crate::profile_parse::parse_profile;
+use crate::profile::{ProfileError, Profile};
 
 #[derive(Error, Debug)]
-pub enum Error {
+pub enum WatcherError {
     #[error("notify error: {0}")]
     Notify(#[from] NotifyError),
     #[error("io error: {0}")]
@@ -20,43 +21,43 @@ pub enum Error {
     Parse(#[from] ProfileError),
 }
 
-pub struct WorkspaceWatcher {
+pub struct ProfileWatcher {
     #[allow(dead_code)]
     watcher: Debouncer<FsEventWatcher>,
 }
 
-pub enum WorkspaceEvent {
-    Changed(Workspace),
+pub enum ProfileEvent {
+    Changed(Profile),
     Removed,
-    Error(Error),
+    Error(WatcherError),
 }
 
-type WorkspaceEventSender = mpsc::Sender<WorkspaceEvent>;
-type WorkspaceEventReceiver = mpsc::Receiver<WorkspaceEvent>;
+type ProfileEventSender = mpsc::Sender<ProfileEvent>;
+pub type ProfileEventReceiver = mpsc::Receiver<ProfileEvent>;
 
-fn send_workspace_event(path: &Path, tx: &WorkspaceEventSender) {
+fn send_profile_event(path: &Path, tx: &ProfileEventSender) {
     match fs::read_to_string(path) {
         Ok(content) => match parse_profile(&content) {
             Ok(workspace) => {
-                let _ = tx.send(WorkspaceEvent::Changed(workspace));
+                let _ = tx.send(ProfileEvent::Changed(workspace));
             }
             Err(e) => {
-                let error = Error::Parse(e);
-                let _ = tx.send(WorkspaceEvent::Error(error));
+                let error = WatcherError::Parse(e);
+                let _ = tx.send(ProfileEvent::Error(error));
             }
         },
         Err(e) => {
-            let error = Error::Io(e);
-            let _ = tx.send(WorkspaceEvent::Error(error));
+            let error = WatcherError::Io(e);
+            let _ = tx.send(ProfileEvent::Error(error));
         }
     };
 }
 
-impl WorkspaceWatcher {
+impl ProfileWatcher {
     pub fn new_with_sender(
         path: &Path,
-        tx: WorkspaceEventSender,
-    ) -> Result<Self, Error> {
+        tx: ProfileEventSender,
+    ) -> Result<Self, WatcherError> {
         let path_c = path.to_owned();
         let tx_c = tx.clone();
 
@@ -73,9 +74,9 @@ impl WorkspaceWatcher {
                             DebouncedEventKind::Any
                             | DebouncedEventKind::AnyContinuous => {
                                 if !path_c.exists() {
-                                    let _ = tx_c.send(WorkspaceEvent::Removed);
+                                    let _ = tx_c.send(ProfileEvent::Removed);
                                 } else {
-                                    send_workspace_event(&path_c, &tx_c);
+                                    send_profile_event(&path_c, &tx_c);
                                 }
                             }
                             _ => {}
@@ -83,8 +84,8 @@ impl WorkspaceWatcher {
                     }
                 }
                 Err(event) => {
-                    let error = Error::Notify(event);
-                    let _ = tx_c.send(WorkspaceEvent::Error(error));
+                    let error = WatcherError::Notify(event);
+                    let _ = tx_c.send(ProfileEvent::Error(error));
                 }
             },
         )?;
@@ -96,7 +97,7 @@ impl WorkspaceWatcher {
         Ok(Self { watcher: debouncer })
     }
 
-    pub fn new(path: &Path) -> Result<(Self, WorkspaceEventReceiver), Error> {
+    pub fn new(path: &Path) -> Result<(Self, ProfileEventReceiver), WatcherError> {
         let (tx, rx) = mpsc::channel();
 
         Ok((Self::new_with_sender(path, tx)?, rx))
@@ -104,11 +105,11 @@ impl WorkspaceWatcher {
 
     pub fn new_with_starting_event(
         path: &Path,
-    ) -> Result<(Self, WorkspaceEventReceiver), Error> {
+    ) -> Result<(Self, ProfileEventReceiver), WatcherError> {
         let (tx, rx) = mpsc::channel();
 
         // Send initial workspace event
-        send_workspace_event(path, &tx);
+        send_profile_event(path, &tx);
         Ok((Self::new_with_sender(path, tx)?, rx))
     }
 }

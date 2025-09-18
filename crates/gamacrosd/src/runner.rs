@@ -55,7 +55,7 @@ impl<'a> ActionRunner<'a> {
             }
             Action::Rumble { id, ms } => {
                 if let Some(h) = self.manager.controller(id) {
-                    let _ = h.rumble(0.2, 0.2, Duration::from_millis(ms as u64));
+                    let _ = h.rumble(1.0, 1.0, Duration::from_millis(ms as u64));
                 }
             }
         }

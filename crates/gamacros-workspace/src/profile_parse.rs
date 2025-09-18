@@ -1,14 +1,14 @@
 use serde::Deserialize;
 
-use crate::{v1::ProfileV1, Workspace, ProfileError};
+use crate::{v1::ProfileV1, Profile, profile::ProfileError};
 
 /// Parse yaml profile.
-pub fn parse_profile(input: &str) -> Result<Workspace, ProfileError> {
+pub fn parse_profile(input: &str) -> Result<Profile, ProfileError> {
     let version = parse_version(input)?;
     match version {
         1 => {
             let profile: ProfileV1 = serde_yaml::from_str(input)?;
-            let workspace = profile.to_workspace()?;
+            let workspace = profile.parse()?;
             Ok(workspace)
         }
         _ => Err(ProfileError::UnsupportedVersion(version)),

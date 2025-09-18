@@ -2,62 +2,51 @@ mod app;
 mod logging;
 mod cli;
 mod runner;
+mod control;
 
 use std::path::PathBuf;
 use std::{process, time::Duration};
 
 use colored::Colorize;
 use crossbeam_channel::{select, unbounded};
-use fern::Dispatch;
 use clap::Parser;
 use lunchctl::{LaunchAgent, LaunchControllable};
 use nsworkspace::{Event as ActivityEvent, Monitor, NotificationListener};
 
 use gamacros_gamepad::{ControllerEvent, ControllerManager};
 use gamacros_control::Performer;
-use gamacros_workspace::{resolve_profile, WorkspaceEvent, WorkspaceWatcher};
+use gamacros_workspace::{Workspace, ProfileEvent};
 
 use crate::app::{Gamacros, ButtonPhase};
 use crate::cli::{Cli, Command};
 use crate::runner::ActionRunner;
+use crate::control::{start_control_server, ControlCommand};
 
 const APP_LABEL: &str = "co.myrt.gamacros";
 
 fn main() -> process::ExitCode {
     let cli = Cli::parse();
     if cli.command != Command::Observe {
-        setup_logging(cli.verbose, cli.no_color);
+        logging::setup(cli.verbose, cli.no_color);
     }
 
     let bin_path = std::env::current_exe().unwrap();
 
     match cli.command {
-        Command::Run { profile } => {
-            let profile_path = match resolve_profile(profile.as_deref()) {
-                Ok(path) => path,
-                Err(e) => {
-                    print_error!("failed to resolve profile: {e}");
-                    return process::ExitCode::FAILURE;
-                }
-            };
-            run_event_loop(Some(profile_path));
+        Command::Run { workspace } => {
+            let workspace_path = resolve_workspace_path(workspace.as_deref());
+            run_event_loop(Some(workspace_path));
         }
-        Command::Start { profile } => {
-            let profile_path = match resolve_profile(profile.as_deref()) {
-                Ok(path) => path,
-                Err(e) => {
-                    print_error!("failed to resolve profile: {e}");
-                    return process::ExitCode::FAILURE;
-                }
-            };
+        Command::Start { workspace } => {
+            let workspace_path = resolve_workspace_path(workspace.as_deref());
 
             let mut arguments = vec![bin_path.display().to_string()];
             if cli.verbose {
                 arguments.push("--verbose".to_string());
             }
             arguments.push("run".to_string());
-            arguments.push("--profile".to_string());
-            arguments.push(profile_path.display().to_string());
+            arguments.push("--workspace".to_string());
+            arguments.push(workspace_path.display().to_string());
 
             let agent = LaunchAgent {
                 label: APP_LABEL.to_string(),
@@ -138,7 +127,7 @@ fn main() -> process::ExitCode {
             }
         }
         Command::Observe => {
-            setup_logging(true, cli.no_color);
+            logging::setup(true, cli.no_color);
             run_event_loop(None);
         }
     }
@@ -146,25 +135,23 @@ fn main() -> process::ExitCode {
     process::ExitCode::SUCCESS
 }
 
-fn setup_logging(verbose: bool, no_color: bool) {
-    let log_level = if verbose {
-        log::LevelFilter::Debug
-    } else {
-        log::LevelFilter::Info
-    };
-    Dispatch::new()
-        .level(log::LevelFilter::Error) // Hide enigo logs
-        .level_for("gamacrosd", log_level)
-        .chain(std::io::stdout())
-        .apply()
-        .expect("Unable to set up logger");
+fn resolve_workspace_path(workspace: Option<&str>) -> PathBuf {
+    let workspace = workspace.map(PathBuf::from);
+    if let Some(workspace) = workspace {
+        return workspace;
+    }
 
-    if no_color {
-        colored::control::set_override(false);
+    match Workspace::default_path() {
+        Ok(path) => path,
+        Err(e) => {
+            print_error!("failed to resolve workspace: {e}");
+
+            process::exit(1);
+        }
     }
 }
 
-fn run_event_loop(maybe_profile_path: Option<PathBuf>) {
+fn run_event_loop(maybe_workspace_path: Option<PathBuf>) {
     // Activity monitor must run on the main thread.
     // We keep its std::mpsc receiver and poll it from the event loop (no bridge thread).
     let Some((monitor, activity_std_rx, monitor_stop_tx)) = Monitor::new() else {
@@ -186,7 +173,14 @@ fn run_event_loop(maybe_profile_path: Option<PathBuf>) {
     })
     .expect("failed to set Ctrl+C handler");
 
-    let profile_path = maybe_profile_path.to_owned();
+    let workspace_path = maybe_workspace_path.to_owned();
+
+    // Start control socket on the main thread and forward commands into the event loop.
+    let (control_tx, control_rx) = unbounded::<ControlCommand>();
+    let _control_handle = workspace_path.clone().map(|workspace_path| {
+        start_control_server(workspace_path, control_tx)
+            .expect("failed to start control server")
+    });
 
     // Run the main event loop in a background thread while the main thread runs the monitor loop.
     let event_loop = std::thread::Builder::new()
@@ -199,12 +193,21 @@ fn run_event_loop(maybe_profile_path: Option<PathBuf>) {
         let mut keypress = Performer::new().expect("failed to start keypress");
         let ticker = crossbeam_channel::tick(Duration::from_millis(10));
 
-        let maybe_monitor = profile_path
-            .map(|path| WorkspaceWatcher::new_with_starting_event(&path))
+        let workspace = match Workspace::new(workspace_path.as_deref()) {
+            Ok(workspace) => workspace,
+            Err(e) => {
+                print_error!("failed to start workspace: {e}");
+                return;
+            }
+        };
+
+        let maybe_watcher = workspace_path
+            .as_ref()
+            .map(|_| workspace.start_profile_watcher())
             .transpose()
             .expect("failed to start workspace watcher");
 
-        let maybe_workspace_rx = maybe_monitor.map(|w| w.1);
+        let maybe_workspace_rx = maybe_watcher.map(|(_watcher, rx)| rx);
 
         let mut action_runner = ActionRunner::new(&mut keypress, &manager);
 
@@ -249,6 +252,25 @@ fn run_event_loop(maybe_profile_path: Option<PathBuf>) {
                         }
                     }
                 }
+                recv(control_rx) -> cmd => {
+                    match cmd {
+                        Ok(ControlCommand::Rumble { id, ms }) => {
+                            match id {
+                                Some(cid) => {
+                                    action_runner.run(crate::app::Action::Rumble { id: cid, ms });
+                                }
+                                None => {
+                                    for info in manager.controllers() {
+                                        action_runner.run(crate::app::Action::Rumble { id: info.id, ms });
+                                    }
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            // control channel closed; continue running
+                        }
+                    }
+                }
                 recv(ticker) -> _ => {
                     gamacros.on_tick_with(|action| {
                         action_runner.run(action);
@@ -266,17 +288,17 @@ fn run_event_loop(maybe_profile_path: Option<PathBuf>) {
 
             while let Ok(msg) = workspace_rx.try_recv() {
                 match msg {
-                    WorkspaceEvent::Changed(workspace) => {
+                    ProfileEvent::Changed(workspace) => {
                         print_info!("profile changed, updating workspace");
                         if let Some(shell) = workspace.shell.clone() {
                             action_runner.set_shell(shell);
                         }
                         gamacros.set_workspace(workspace);
                     }
-                    WorkspaceEvent::Removed => {
+                    ProfileEvent::Removed => {
                         gamacros.remove_workspace();
                     }
-                    WorkspaceEvent::Error(error) => {
+                    ProfileEvent::Error(error) => {
                         print_error!("profile error: {error}");
                     }
                 }
