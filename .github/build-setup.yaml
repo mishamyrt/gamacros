@@ -1,0 +1,4 @@
+- name: Setup SDL2 build dependencies
+  run: |
+    brew install sdl2 pkg-config
+    echo "RUSTFLAGS=-L native=/opt/homebrew/lib -C link-args=-Wl,-rpath,/opt/homebrew/lib" >> $GITHUB_ENV

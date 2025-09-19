@@ -127,6 +127,10 @@ jobs:
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
             echo "$HOME/.cargo/bin" >> $GITHUB_PATH
           fi
+      - name: "Setup SDL2 build dependencies"
+        run: |
+          brew install sdl2 pkg-config
+          echo "RUSTFLAGS=-L native=/opt/homebrew/lib -C link-args=-Wl,-rpath,/opt/homebrew/lib" >> $GITHUB_ENV
       - name: Install dist
         run: ${{ matrix.install_dist.run }}
       # Get the dist-manifest
