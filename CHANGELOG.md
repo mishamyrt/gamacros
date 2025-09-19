@@ -2,7 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.0](https://github.com/mishamyrt/commitfmt/compare/..v0.1.0) - 2025-09-16
+## [0.1.1](https://github.com/mishamyrt/gamacros/compare/v0.1.0..v0.1.1) - 2025-09-19
+
+### 🚀 Features
+
+- Add socket control
+- Add control examples
+
+### 🚜 Refactor
+
+- Rework socket api to binary format
+
+## [0.1.0](https://github.com/mishamyrt/gamacros/compare/..v0.1.0) - 2025-09-16
 
 ### 🚀 Features
 
