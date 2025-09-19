@@ -20,3 +20,4 @@ sdl2 = { workspace = true }
 crossbeam-channel = { workspace = true }
 gamacros-bit-derive = { workspace = true }
 gamacros-bit-mask = { workspace = true }
+ahash = { workspace = true }

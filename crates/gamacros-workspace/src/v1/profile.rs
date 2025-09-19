@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use ahash::AHashMap;
 use serde::Deserialize;
 
@@ -47,7 +45,7 @@ pub(crate) struct ProfileV1ControllerSettings {
     pub vid: u16,
     pub pid: u16,
     #[serde(default)]
-    pub remap: HashMap<String, String>, // button -> button
+    pub remap: AHashMap<String, String>, // button -> button
 }
 
 #[derive(Debug, Clone, Deserialize)]

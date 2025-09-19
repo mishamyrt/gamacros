@@ -1,8 +1,8 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread;
 
 use crossbeam_channel::Receiver;
+use ahash::AHashMap;
 use sdl2::controller::{Button as SdlButton, GameController, Axis as SdlAxis};
 use sdl2::event::Event;
 use sdl2::haptic::Haptic;
@@ -44,10 +44,10 @@ pub(crate) fn start_runtime_thread(
             Err(_) => return,
         };
 
-        let mut controllers: HashMap<ControllerId, GameController> = HashMap::new();
-        let mut joysticks: HashMap<ControllerId, Joystick> = HashMap::new();
-        let mut haptics: HashMap<ControllerId, Haptic> = HashMap::new();
-        let mut trigger_state: HashMap<ControllerId, (bool, bool)> = HashMap::new();
+        let mut controllers: AHashMap<ControllerId, GameController> = AHashMap::new();
+        let mut joysticks: AHashMap<ControllerId, Joystick> = AHashMap::new();
+        let mut haptics: AHashMap<ControllerId, Haptic> = AHashMap::new();
+        let mut trigger_state: AHashMap<ControllerId, (bool, bool)> = AHashMap::new();
 
         // Initial enumeration
         if let Ok(num_joysticks) = joystick_subsystem.num_joysticks() {

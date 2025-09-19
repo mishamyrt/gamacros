@@ -1,7 +1,7 @@
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
+use ahash::AHashMap;
 use crossbeam_channel::{unbounded, Sender};
 
 use crate::command::Command;
@@ -14,7 +14,7 @@ use crate::types::{ControllerId, ControllerInfo};
 /// Shared state used by the manager, the runtime loop and controller handles.
 pub(crate) struct Inner {
     pub subscribers: Mutex<Vec<Sender<ControllerEvent>>>,
-    pub controllers_info: RwLock<HashMap<ControllerId, ControllerInfo>>,
+    pub controllers_info: RwLock<AHashMap<ControllerId, ControllerInfo>>,
     pub cmd_tx: Sender<Command>,
 }
 
@@ -30,7 +30,7 @@ impl ControllerManager {
         let (cmd_tx, cmd_rx) = unbounded::<Command>();
         let inner = Arc::new(Inner {
             subscribers: Mutex::new(Vec::new()),
-            controllers_info: RwLock::new(HashMap::new()),
+            controllers_info: RwLock::new(AHashMap::new()),
             cmd_tx,
         });
 

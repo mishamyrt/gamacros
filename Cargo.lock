@@ -478,6 +478,7 @@ dependencies = [
 name = "gamacros-gamepad"
 version = "0.0.0"
 dependencies = [
+ "ahash",
  "crossbeam-channel",
  "gamacros-bit-derive",
  "gamacros-bit-mask",
