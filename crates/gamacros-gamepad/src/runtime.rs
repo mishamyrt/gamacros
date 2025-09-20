@@ -44,10 +44,12 @@ pub(crate) fn start_runtime_thread(
             Err(_) => return,
         };
 
-        let mut controllers: AHashMap<ControllerId, GameController> = AHashMap::new();
+        let mut controllers: AHashMap<ControllerId, GameController> =
+            AHashMap::new();
         let mut joysticks: AHashMap<ControllerId, Joystick> = AHashMap::new();
         let mut haptics: AHashMap<ControllerId, Haptic> = AHashMap::new();
-        let mut trigger_state: AHashMap<ControllerId, (bool, bool)> = AHashMap::new();
+        let mut trigger_state: AHashMap<ControllerId, (bool, bool)> =
+            AHashMap::new();
 
         // Initial enumeration
         if let Ok(num_joysticks) = joystick_subsystem.num_joysticks() {

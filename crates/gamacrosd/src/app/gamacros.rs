@@ -12,7 +12,8 @@ use gamacros_workspace::{
 };
 
 use crate::{app::ButtonPhase, print_debug, print_info};
-use super::stick::StickProcessor;
+use super::stick::{StickProcessor, CompiledStickRules};
+use super::stick::util::axis_index as stick_axis_index;
 
 #[derive(Debug, Clone)]
 pub enum Action {
@@ -39,8 +40,8 @@ pub struct Gamacros {
     active_app: Box<str>,
     controllers: AHashMap<ControllerId, ControllerState>,
     sticks: RefCell<StickProcessor>,
-    active_stick_rules: Option<Arc<StickRules>>,
-    axes_scratch: Vec<(ControllerId, [f32; 6])>,
+    active_stick_rules: Option<Arc<StickRules>>, // keep original for potential future use
+    compiled_stick_rules: Option<CompiledStickRules>,
 }
 
 impl Gamacros {
@@ -51,7 +52,7 @@ impl Gamacros {
             controllers: AHashMap::new(),
             sticks: RefCell::new(StickProcessor::new()),
             active_stick_rules: None,
-            axes_scratch: Vec::new(),
+            compiled_stick_rules: None,
         }
     }
 
@@ -61,10 +62,28 @@ impl Gamacros {
 
     pub fn remove_workspace(&mut self) {
         self.workspace = None;
+        self.active_stick_rules = None;
+        self.compiled_stick_rules = None;
     }
 
     pub fn set_workspace(&mut self, workspace: Profile) {
         self.workspace = Some(workspace);
+        // Recompute stick rules for current active app (workspace may have changed)
+        if !self.active_app.is_empty() {
+            if let Some(ws) = self.workspace.as_ref() {
+                if let Some(app_rules) = ws.rules.get(&*self.active_app) {
+                    self.active_stick_rules =
+                        Some(Arc::new(app_rules.sticks.clone()));
+                    self.compiled_stick_rules = self
+                        .active_stick_rules
+                        .as_deref()
+                        .map(CompiledStickRules::from_rules);
+                } else {
+                    self.active_stick_rules = None;
+                    self.compiled_stick_rules = None;
+                }
+            }
+        }
     }
 
     pub fn add_controller(&mut self, info: ControllerInfo) {
@@ -124,18 +143,23 @@ impl Gamacros {
             .rules
             .get(&*self.active_app)
             .map(|r| Arc::new(r.sticks.clone()));
+
+        self.compiled_stick_rules = self
+            .active_stick_rules
+            .as_deref()
+            .map(CompiledStickRules::from_rules);
     }
 
     pub fn get_active_app(&self) -> &str {
         &self.active_app
     }
 
-    pub fn get_stick_bindings_arc(&self) -> Option<Arc<StickRules>> {
-        self.active_stick_rules.clone()
+    pub fn get_compiled_stick_rules(&self) -> Option<&CompiledStickRules> {
+        self.compiled_stick_rules.as_ref()
     }
 
     pub fn on_axis_motion(&mut self, id: ControllerId, axis: CtrlAxis, value: f32) {
-        let idx = StickProcessor::axis_index(axis);
+        let idx = stick_axis_index(axis);
         if let Some(st) = self.controllers.get_mut(&id) {
             st.axes[idx] = value;
         }
@@ -146,18 +170,16 @@ impl Gamacros {
     }
 
     pub fn on_tick_with<F: FnMut(Action)>(&mut self, sink: F) {
-        let bindings_arc = self.get_stick_bindings_arc();
-        let bindings_ref = bindings_arc.as_deref();
-        self.axes_scratch.clear();
-        self.axes_scratch.reserve(self.controllers.len());
+        let bindings_ref = self.get_compiled_stick_rules();
+        // Avoid borrowing self while calling into sticks; use a local buffer
+        let mut axes_scratch: Vec<(ControllerId, [f32; 6])> =
+            Vec::with_capacity(self.controllers.len());
         for (id, st) in self.controllers.iter() {
-            self.axes_scratch.push((*id, st.axes));
+            axes_scratch.push((*id, st.axes));
         }
-        self.sticks.borrow_mut().on_tick_with(
-            bindings_ref,
-            &self.axes_scratch,
-            sink,
-        );
+        self.sticks
+            .borrow_mut()
+            .on_tick_with(bindings_ref, &axes_scratch, sink);
     }
 
     pub fn on_button_with<F: FnMut(Action)>(
