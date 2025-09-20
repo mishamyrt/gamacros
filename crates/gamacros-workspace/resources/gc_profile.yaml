@@ -1,0 +1,78 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/mishamyrt/gamacros/refs/heads/main/crates/gamacros-workspace/src/v1/schema.json
+version: 1
+# Controller settings.
+controllers:
+  # Switch controller pro
+  - vid: 0x57e
+    pid: 0x2009
+    remap:
+      a: b
+      b: a
+      x: y
+      y: x
+
+# Shell to run for shell actions.
+shell: /bin/zsh
+
+# Blacklist apps from being matched.
+blacklist:
+  - com.apple.SystemPreferences
+
+# App groups. Can be used as app alias in rules.
+groups:
+  ide:
+    - com.todesktop.230313mzl4w4u92
+    - com.microsoft.VSCode
+  browser:
+    - com.google.Chrome
+    - com.apple.Safari
+    - ai.perplexity.comet
+  terminal:
+    - com.apple.Terminal
+
+# App rule layers. Selector -> app rules.
+# Selector is a string that matches the app name. It can be a group name or a bundle id.
+# Selector can use "$" to refer to a group name.
+# Selector can use "|" to join multiple selectors.
+rules:
+  # Common rules for all apps.
+  common:
+    buttons:
+      l1:
+        vibrate: 100
+        keystroke: rcmd
+      b:
+        keystroke: enter
+      a:
+        keystroke: escape
+      r1:
+        keystroke: backspace
+      l2+r2:
+        vibrate: 100
+        macros:
+          - cmd+a
+          - backspace
+
+  $ide | $browser:
+    buttons:
+      y:
+        shell: |
+          echo "$"
+      select:
+        keystroke: cmd+dot
+      start:
+        keystroke: cmd+i
+      dpad_up:
+        keystroke: arrow_up
+      dpad_left:
+        keystroke: arrow_left
+      dpad_right:
+        keystroke: arrow_right
+      dpad_down:
+        keystroke: arrow_down
+    sticks:
+      right:
+        mode: mouse_move
+        max_speed_px_s: 1600
+      left:
+        mode: scroll

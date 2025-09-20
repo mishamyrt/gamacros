@@ -3,7 +3,7 @@ use gamacros_workspace::parse_profile;
 
 fn bench_parse_profile(c: &mut Criterion) {
     // Use a real-world profile from the repository root
-    let yaml: &str = include_str!("../../../gc_profile.yaml");
+    let yaml: &str = include_str!("../resources/gc_profile.yaml");
 
     c.bench_function("workspace_parse_profile_gc_profile", |b| {
         b.iter(|| {
