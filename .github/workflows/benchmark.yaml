@@ -10,7 +10,7 @@ on:
 jobs:
   benchmarks:
     name: Run benchmarks
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -20,6 +20,16 @@ jobs:
           channel: stable
           cache-target: release
           bins: cargo-codspeed
+
+      - name: Setup SDL2 with build dependencies
+        run: |
+          brew install sdl2 pkg-config
+          echo "RUSTFLAGS=-L native=/opt/homebrew/lib -C link-args=-Wl,-rpath,/opt/homebrew/lib" >> $GITHUB_ENV
+
+      - name: Setup Just
+        uses: extractions/setup-just@v3
+        with:
+          just-version: ${{ env.JUST_VERSION }}
 
       - name: Build the benchmark target(s)
         run: cargo codspeed build
