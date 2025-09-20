@@ -1,7 +1,5 @@
-use std::sync::Arc;
-
 use ahash::AHashMap;
-use gamacros_control::{Key, KeyCombo};
+use gamacros_control::Key;
 use gamacros_gamepad::ControllerId;
 use gamacros_workspace::{Axis as ProfileAxis, StickSide};
 
@@ -161,9 +159,9 @@ impl StickProcessor {
                 };
                 *slot = Some(st);
                 if reg.fire_on_activate {
-                    let key = reg.key.to_owned();
-                    let combo = KeyCombo::from_key(key);
-                    Some(Action::KeyTap(Arc::new(combo)))
+                    Some(Action::KeyTap(gamacros_control::KeyCombo::from_key(
+                        reg.key,
+                    )))
                 } else {
                     None
                 }
@@ -196,8 +194,9 @@ impl StickProcessor {
                         let elapsed =
                             now.duration_since(st.last_fire).as_millis() as u64;
                         if elapsed >= due_ms {
-                            let combo = KeyCombo::from_key(st.key);
-                            (sink)(Action::KeyTap(Arc::new(combo)));
+                            (sink)(Action::KeyTap(
+                                gamacros_control::KeyCombo::from_key(st.key),
+                            ));
                             st.last_fire = now;
                             st.delay_done = true;
                         }

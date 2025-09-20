@@ -1,7 +1,7 @@
 use enigo::Key as EnigoKey;
 
 /// A key that can be emulated.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Key {
     Unicode(char),
     Control,

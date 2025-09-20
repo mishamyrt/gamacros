@@ -7,9 +7,7 @@ use colored::Colorize;
 use gamacros_control::KeyCombo;
 use gamacros_bit_mask::Bitmask;
 use gamacros_gamepad::{Button, ControllerId, ControllerInfo, Axis as CtrlAxis};
-use gamacros_workspace::{
-    ButtonAction, ButtonRule, ControllerSettings, Profile, StickRules,
-};
+use gamacros_workspace::{ButtonAction, ControllerSettings, Profile, StickRules};
 
 use crate::{app::ButtonPhase, print_debug, print_info};
 use super::stick::{StickProcessor, CompiledStickRules};
@@ -17,9 +15,9 @@ use super::stick::util::axis_index as stick_axis_index;
 
 #[derive(Debug, Clone)]
 pub enum Action {
-    KeyPress(Arc<KeyCombo>),
-    KeyRelease(Arc<KeyCombo>),
-    KeyTap(Arc<KeyCombo>),
+    KeyPress(KeyCombo),
+    KeyRelease(KeyCombo),
+    KeyTap(KeyCombo),
     Macros(Arc<Vec<KeyCombo>>),
     Shell(String),
     MouseMove { dx: i32, dy: i32 },
@@ -215,33 +213,35 @@ impl Gamacros {
         // snapshot after change
         let now_pressed = state.pressed;
 
-        let mut candidates: Vec<(&ButtonRule, u32)> = vec![];
-
-        for (target, rule) in app_rules.buttons.iter() {
+        // First pass: find max_bits among rules that should fire
+        let mut max_bits: u32 = 0;
+        for (target, _rule) in app_rules.buttons.iter() {
             let was = prev_pressed.is_superset(target);
             let is_now = now_pressed.is_superset(target);
-
             let fire = match phase {
-                // For Pressed rules, fire on both edges (activation and deactivation)
-                // so that main.rs can press on activation (phase=Pressed)
-                // and release on deactivation (phase=Released).
                 ButtonPhase::Pressed => was != is_now,
                 ButtonPhase::Released => was && !is_now,
             };
-
             if fire {
                 let bits: u32 = target.count();
-                candidates.push((rule, bits));
+                if bits > max_bits {
+                    max_bits = bits;
+                }
             }
         }
-
-        if candidates.is_empty() {
+        if max_bits == 0 {
             return;
         }
 
-        let max_bits = candidates.iter().map(|(_, b)| *b).max().unwrap_or(0);
-        for (rule, bits) in candidates.into_iter() {
-            if bits != max_bits {
+        // Second pass: execute only rules with that cardinality
+        for (target, rule) in app_rules.buttons.iter() {
+            let was = prev_pressed.is_superset(target);
+            let is_now = now_pressed.is_superset(target);
+            let fire = match phase {
+                ButtonPhase::Pressed => was != is_now,
+                ButtonPhase::Released => was && !is_now,
+            };
+            if !fire || target.count() != max_bits {
                 continue;
             }
             match phase {
@@ -253,7 +253,7 @@ impl Gamacros {
                     }
                     match rule.action.clone() {
                         ButtonAction::Keystroke(k) => {
-                            sink(Action::KeyPress(k));
+                            sink(Action::KeyPress((*k).clone()));
                         }
                         ButtonAction::Macros(m) => {
                             sink(Action::Macros(m));
@@ -266,7 +266,7 @@ impl Gamacros {
                 }
                 ButtonPhase::Released => {
                     if let ButtonAction::Keystroke(k) = rule.action.clone() {
-                        sink(Action::KeyRelease(k));
+                        sink(Action::KeyRelease((*k).clone()));
                     }
                 }
             }
