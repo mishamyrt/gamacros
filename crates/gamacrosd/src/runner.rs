@@ -8,7 +8,7 @@ use crate::{app::Action, print_error, print_info};
 
 const DEFAULT_SHELL: &str = "/bin/zsh";
 
-pub(crate) struct ActionRunner<'a> {
+pub struct ActionRunner<'a> {
     keypress: &'a mut Performer,
     manager: &'a ControllerManager,
     shell: Option<Box<str>>,

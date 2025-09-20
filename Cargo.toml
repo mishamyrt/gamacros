@@ -19,29 +19,41 @@ authors = ["Mikhael Khrustik <misha@myrt.co>"]
 license = "MIT"
 
 [workspace.dependencies]
+# Internal crates
 gamacrosd = { path = "crates/gamacrosd" }
 gamacros-control = { path = "crates/gamacros-control" }
 gamacros-gamepad = { path = "crates/gamacros-gamepad" }
 gamacros-workspace = { path = "crates/gamacros-workspace" }
 gamacros-bit-derive = { path = "crates/gamacros-bit/derive" }
 gamacros-bit-mask = { path = "crates/gamacros-bit/mask" }
+
+# Error handling
+thiserror = "2.0.12"
+
+# macOS bindings
 nsworkspace = "0.2.0"
 lunchctl = "0.1.0"
 
-crossbeam-channel = "0.5"
-dashmap = "5"
-sdl2 = { version = "0.37" }
-ahash = "0.8"
+# File watching
 notify = "8.2.0"
+notify-debouncer-mini = "0.7.0"
+
+# Gamepad bindings
+sdl2 = "0.37"
+
+# Keyboard bindings
+enigo = "0.6.0"
+
+# Fast hashmaps
+ahash = "0.8"
+
+# Concurrent channels
+crossbeam-channel = "0.5"
 
 # Proc macros
 syn = "2"
 quote = "1"
 proc-macro2 = "1"
-
-thiserror = "2.0.12"
-
-enigo = { version = "0.6.0" }
 
 # Parsing
 serde = "1.0"
@@ -56,7 +68,9 @@ log = "0.4.26"
 colored = "3.0.0"
 fern = "0.6.1"
 
-notify-debouncer-mini = "0.7.0"
+# Benchmarking
+criterion = "0.5"
+codspeed-criterion-compat = "2"
 
 [workspace.lints.rust]
 unreachable_pub = "warn"

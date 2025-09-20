@@ -21,3 +21,11 @@ serde_yaml = { workspace = true }
 ahash = { workspace = true, features = ["serde"] }
 notify = { workspace = true }
 notify-debouncer-mini = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+codspeed-criterion-compat = { workspace = true }
+
+[[bench]]
+name = "parse"
+harness = false

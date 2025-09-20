@@ -10,6 +10,9 @@ documentation = { workspace = true }
 repository = { workspace = true }
 license = { workspace = true }
 
+[lib]
+path = "src/lib.rs"
+
 [dependencies]
 gamacros-gamepad = { workspace = true }
 gamacros-control = { workspace = true }
@@ -19,7 +22,6 @@ enigo = { workspace = true }
 ctrlc = { workspace = true }
 crossbeam-channel = { workspace = true }
 thiserror = { workspace = true }
-dashmap = { workspace = true }
 chrono = { workspace = true }
 nsworkspace = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
@@ -29,6 +31,18 @@ colored = "3.0.0"
 fern = "0.6.1"
 ahash = "0.8"
 bitcode = "0.6.7"
+
+[dev-dependencies]
+criterion = { workspace = true }
+codspeed-criterion-compat = { workspace = true }
+
+[[bench]]
+name = "buttons"
+harness = false
+
+[[bench]]
+name = "sticks"
+harness = false
 
 [package.metadata.dist]
 dist = true

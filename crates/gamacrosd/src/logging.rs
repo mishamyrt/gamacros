@@ -41,7 +41,7 @@ macro_rules! print_warning {
 }
 
 /// Setup the logger.
-pub(crate) fn setup(verbose: bool, no_color: bool) {
+pub fn setup(verbose: bool, no_color: bool) {
     let log_level = if verbose {
         log::LevelFilter::Debug
     } else {

@@ -1,7 +1,7 @@
 use gamacros_workspace::{StickMode, StickRules, StickSide};
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct CompiledStickRules {
+pub struct CompiledStickRules {
     pub(super) sides: [Option<StickMode>; 2],
 }
 

@@ -57,6 +57,10 @@ test-coverage:
 format:
   cargo fmt --all
 
+[group: 'qa']
+bench *ARGS:
+  cargo bench {{ARGS}}
+
 qa: lint check-formatting test
 
 # Memory testing

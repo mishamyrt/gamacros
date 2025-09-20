@@ -13,8 +13,9 @@ pub use profile_watcher::{ProfileWatcher, ProfileEvent};
 
 pub use profile_parse::parse_profile;
 pub use profile::{
-    Profile, ButtonAction, ButtonRule, ControllerSettings, StickRules, ArrowsParams,
-    Axis, MouseParams, ScrollParams, StepperParams, StickMode, StickSide,
+    Profile, ButtonAction, ButtonRule, ControllerSettings, ControllerSettingsMap,
+    StickRules, ArrowsParams, Axis, MouseParams, ScrollParams, StepperParams,
+    StickMode, StickSide, AppRules, RuleMap, ButtonRules,
 };
 // pub use profile::resolve_profile;
 pub use workspace::Workspace;

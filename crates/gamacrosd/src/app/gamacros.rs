@@ -42,6 +42,12 @@ pub struct Gamacros {
     compiled_stick_rules: Option<CompiledStickRules>,
 }
 
+impl Default for Gamacros {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Gamacros {
     pub fn new() -> Self {
         Self {
