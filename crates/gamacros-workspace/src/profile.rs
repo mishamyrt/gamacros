@@ -4,6 +4,7 @@ use ahash::{AHashMap, AHashSet};
 
 use gamacros_control::KeyCombo;
 use gamacros_gamepad::Button;
+use smallvec::SmallVec;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -62,11 +63,14 @@ pub type RuleMap = AHashMap<BundleId, AppRules>;
 /// A set of rules to handle app settings for an app.
 pub type ControllerSettingsMap = AHashMap<ControllerId, ControllerSettings>;
 
+/// A set of macros.
+pub type Macros = SmallVec<[KeyCombo; 4]>;
+
 /// A action for a gamepad button.
 #[derive(Debug, Clone)]
 pub enum ButtonAction {
     Keystroke(Arc<KeyCombo>),
-    Macros(Arc<Vec<KeyCombo>>),
+    Macros(Arc<Macros>),
     Shell(String),
 }
 

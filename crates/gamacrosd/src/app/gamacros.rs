@@ -7,7 +7,7 @@ use colored::Colorize;
 use gamacros_control::KeyCombo;
 use gamacros_bit_mask::Bitmask;
 use gamacros_gamepad::{Button, ControllerId, ControllerInfo, Axis as CtrlAxis};
-use gamacros_workspace::{ButtonAction, ControllerSettings, Profile, StickRules};
+use gamacros_workspace::{ButtonAction, ControllerSettings, Macros, Profile, StickRules};
 
 use crate::{app::ButtonPhase, print_debug, print_info};
 use super::stick::{StickProcessor, CompiledStickRules};
@@ -18,7 +18,7 @@ pub enum Action {
     KeyPress(KeyCombo),
     KeyRelease(KeyCombo),
     KeyTap(KeyCombo),
-    Macros(Arc<Vec<KeyCombo>>),
+    Macros(Arc<Macros>),
     Shell(String),
     MouseMove { dx: i32, dy: i32 },
     Scroll { h: i32, v: i32 },

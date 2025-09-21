@@ -7,8 +7,8 @@ use gamacros_gamepad::Button;
 use crate::v1::profile::{ProfileV1ButtonRule, ProfileV1Stick};
 use crate::profile::{
     AppRules, ArrowsParams, Axis, ButtonAction, ButtonRule, ButtonRules,
-    ControllerSettings, ControllerSettingsMap, MouseParams, RuleMap, ScrollParams,
-    StepperParams, StickMode, StickRules, StickSide, Profile,
+    ControllerSettings, ControllerSettingsMap, Macros, MouseParams, Profile,
+    RuleMap, ScrollParams, StepperParams, StickMode, StickRules, StickSide,
 };
 use crate::ButtonChord;
 
@@ -203,12 +203,12 @@ fn parse_keystroke(input: &str) -> Result<KeyCombo, Error> {
     input.parse::<KeyCombo>().map_err(Error::KeyParse)
 }
 
-fn parse_macros(input: &[String]) -> Result<Vec<KeyCombo>, Error> {
+fn parse_macros(input: &[String]) -> Result<Macros, Error> {
     input
         .iter()
         .map(|m| m.as_str())
         .map(parse_keystroke)
-        .collect::<Result<Vec<_>, _>>()
+        .collect::<Result<Macros, _>>()
 }
 
 fn parse_stick_mode(raw: ProfileV1Stick) -> Result<StickMode, Error> {
