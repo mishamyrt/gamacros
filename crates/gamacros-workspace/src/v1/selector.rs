@@ -38,7 +38,7 @@ impl<'a> Lexem<'a> {
         if token == "|" {
             return Self::OperatorOr;
         }
-        if let Some(stripped) = token.strip_prefix("$") {
+        if let Some(stripped) = token.strip_prefix('$') {
             return Self::Group(stripped);
         }
         Self::BundleId(token)
@@ -47,16 +47,30 @@ impl<'a> Lexem<'a> {
 
 /// Get the next selector token from the input string.
 fn next_token(input: &str) -> Option<(&str, &str)> {
+    // Skip leading whitespace
+    let input = input.trim_start();
+    if input.is_empty() {
+        return None;
+    }
+
+    // If the next character is a pipe, return it as a separate token
+    if input.as_bytes()[0] == b'|' {
+        return Some(("|", &input[1..]));
+    }
+
+    // Otherwise, read until next whitespace or pipe
     for (i, ch) in input.char_indices() {
+        if ch == '|' {
+            return Some((&input[..i], &input[i..]));
+        }
         if ch.is_whitespace() {
-            return Some((&input[..i], &input[i + 1..]));
+            // Trim all subsequent whitespace in the rest for stable tokenization
+            let rest = input[i..].trim_start();
+            return Some((&input[..i], rest));
         }
     }
-    if input.is_empty() {
-        None
-    } else {
-        Some((input, ""))
-    }
+
+    Some((input, ""))
 }
 
 /// A selector is an app list with groups and bundle ids.
@@ -72,7 +86,9 @@ impl<'a> Selector<'a> {
         &self,
         groups: &AHashMap<String, Vec<Box<str>>>,
     ) -> SelectorResult<Vec<Box<str>>> {
-        let mut bundle_ids: Vec<Box<str>> = Vec::new();
+        // Pre-allocate at least the number of explicit terms;
+        // additional capacity for groups is reserved on demand.
+        let mut bundle_ids: Vec<Box<str>> = Vec::with_capacity(self.0.len());
         for token in self.0.iter() {
             match token {
                 Lexem::BundleId(bundle_id) => bundle_ids.push((*bundle_id).into()),
@@ -80,6 +96,7 @@ impl<'a> Selector<'a> {
                     let Some(ids) = groups.get(*group) else {
                         return Err(SelectorError::UnknownGroup(group.to_string()));
                     };
+                    bundle_ids.reserve(ids.len());
                     bundle_ids.extend(ids.iter().cloned());
                 }
                 _ => (),
@@ -99,7 +116,9 @@ impl<'a> Selector<'a> {
             input = rest;
             match lexem {
                 Lexem::OperatorOr => {
-                    if last_lexem == Some(Lexem::OperatorOr) {
+                    // Reject leading OR and consecutive ORs
+                    if last_lexem.is_none() || last_lexem == Some(Lexem::OperatorOr)
+                    {
                         return Err(SelectorError::InvalidOperatorOr(
                             input.to_string(),
                         ));
@@ -116,6 +135,11 @@ impl<'a> Selector<'a> {
                 }
             }
             last_lexem = Some(lexem);
+        }
+
+        // Reject trailing OR
+        if last_lexem == Some(Lexem::OperatorOr) {
+            return Err(SelectorError::InvalidOperatorOr(String::new()));
         }
 
         Ok(Self(selector))
@@ -141,6 +165,22 @@ mod tests {
         let (tok, rest) = next_token(input).expect("should return single token");
         assert_eq!(tok, "com.apple.Safari");
         assert_eq!(rest, "");
+    }
+
+    #[test]
+    fn tokenizer_splits_on_pipe_without_spaces() {
+        let input = "$ide|com.apple.Safari";
+        let (tok, rest) = next_token(input).expect("should find first token");
+        assert_eq!(tok, "$ide");
+        assert_eq!(rest, "|com.apple.Safari");
+    }
+
+    #[test]
+    fn tokenizer_skips_multiple_spaces() {
+        let input = "$ide   |   com.apple.Safari";
+        let (tok, rest) = next_token(input).expect("should find first token");
+        assert_eq!(tok, "$ide");
+        assert_eq!(rest, "|   com.apple.Safari");
     }
 
     // -------- lexer (Lexem::parse)
@@ -185,6 +225,30 @@ mod tests {
             Err(SelectorError::InvalidGroupAndBundleId(_)) => {}
             _ => panic!("expected InvalidGroupAndBundleId"),
         }
+    }
+
+    #[test]
+    fn parser_rejects_leading_or() {
+        let s = Selector::parse("| $ide | com.apple.Safari");
+        match s {
+            Err(SelectorError::InvalidOperatorOr(_)) => {}
+            _ => panic!("expected InvalidOperatorOr"),
+        }
+    }
+
+    #[test]
+    fn parser_rejects_trailing_or() {
+        let s = Selector::parse("$ide | com.apple.Safari |");
+        match s {
+            Err(SelectorError::InvalidOperatorOr(_)) => {}
+            _ => panic!("expected InvalidOperatorOr"),
+        }
+    }
+
+    #[test]
+    fn parser_accepts_adjacent_pipes_without_spaces() {
+        let s = Selector::parse("$ide|$browser|com.apple.Safari");
+        assert!(s.is_ok(), "parser should accept adjacent pipes");
     }
 
     // -------- materializer (Selector::materialize)
