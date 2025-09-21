@@ -10,6 +10,12 @@ controllers:
       b: a
       x: y
       y: x
+  # DualSense
+  - vid: 0x045e
+    pid: 0x0039
+    remap:
+      l2: r2
+      r2: l2
 
 # Shell to run for shell actions.
 shell: /bin/zsh
@@ -38,30 +44,27 @@ rules:
   # Common rules for all apps.
   common:
     buttons:
-      l1:
+      b:
         vibrate: 100
         keystroke: cmd
-      b:
-        keystroke: enter
       a:
-        keystroke: escape
+        keystroke: cmd+shift+i+q
       r1:
-        keystroke: backspace
-      l2+r2:
+        shell: echo "r1" | pbcopy
+      l2+r2+l1:
         vibrate: 100
         macros:
           - cmd+a
           - backspace
+    sticks:
+      right:
+        mode: arrows
+      left:
+        mode: volume
+
 
   $ide | $browser:
     buttons:
-      y:
-        shell: |
-          echo "$"
-      select:
-        keystroke: cmd+dot
-      start:
-        keystroke: cmd+i
       dpad_up:
         keystroke: arrow_up
       dpad_left:
@@ -76,3 +79,4 @@ rules:
         max_speed_px_s: 1600
       left:
         mode: scroll
+
