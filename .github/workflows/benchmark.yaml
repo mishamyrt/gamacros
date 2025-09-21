@@ -7,6 +7,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  JUST_VERSION: "1.42.4"
+
 jobs:
   benchmarks:
     name: Run benchmarks
@@ -16,10 +19,17 @@ jobs:
 
       - name: Setup rust toolchain, cache and cargo-codspeed binary
         uses: moonrepo/setup-rust@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           channel: stable
           cache-target: release
           bins: cargo-codspeed
+    
+      - name: Setup Just
+        uses: extractions/setup-just@v3
+        with:
+          just-version: ${{ env.JUST_VERSION }}
 
       - name: Setup SDL2 with build dependencies
         run: |
@@ -31,11 +41,8 @@ jobs:
         with:
           just-version: ${{ env.JUST_VERSION }}
 
-      - name: Build the benchmark target(s)
-        run: cargo codspeed build
-
       - name: Run the benchmarks
         uses: CodSpeedHQ/action@v3
         with:
-          run: cargo codspeed run
+          run: just bench
           token: ${{ secrets.CODSPEED_TOKEN }}
