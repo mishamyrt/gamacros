@@ -25,13 +25,8 @@ jobs:
           channel: stable
           cache-target: release
           bins: cargo-codspeed
-    
-      - name: Setup Just
-        uses: extractions/setup-just@v3
-        with:
-          just-version: ${{ env.JUST_VERSION }}
 
-      - name: Setup SDL2 with build dependencies
+      - name: Setup sdl2
         run: |
           brew install sdl2 pkg-config
           echo "RUSTFLAGS=-L native=/opt/homebrew/lib -C link-args=-Wl,-rpath,/opt/homebrew/lib" >> $GITHUB_ENV
@@ -41,8 +36,12 @@ jobs:
         with:
           just-version: ${{ env.JUST_VERSION }}
 
+      - name: Build benchmarks
+        run: cargo codspeed build
+
       - name: Run the benchmarks
-        uses: CodSpeedHQ/action@v3
-        with:
-          run: just bench
-          token: ${{ secrets.CODSPEED_TOKEN }}
+        run: cargo codspeed run
+        # uses: CodSpeedHQ/action@v3
+        # with:
+        #   run: cargo codspeed run
+        #   token: ${{ secrets.CODSPEED_TOKEN }}
