@@ -295,9 +295,10 @@ fn run_event_loop(maybe_workspace_path: Option<PathBuf>) {
                 }
             }
             while let Ok(msg) = activity_std_rx.try_recv() {
-                if let ActivityEvent::DidActivateApplication(bundle_id) = msg {
-                    gamacros.set_active_app(&bundle_id)
-                }
+                let ActivityEvent::DidActivateApplication(bundle_id) = msg else {
+                    continue;
+                };
+                gamacros.set_active_app(&bundle_id);
             }
             let Some(workspace_rx) = maybe_workspace_rx.as_ref() else {
                 continue;
