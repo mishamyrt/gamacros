@@ -7,6 +7,7 @@ pub enum Key {
     Control,
     RControl,
     Meta,
+    #[cfg(target_os = "macos")]
     RCommand,
     Shift,
     RShift,
@@ -29,7 +30,9 @@ pub enum Key {
     VolumeUp,
     VolumeDown,
     VolumeMute,
+    #[cfg(target_os = "macos")]
     BrightnessUp,
+    #[cfg(target_os = "macos")]
     BrightnessDown,
     F1,
     F2,
@@ -137,6 +140,7 @@ impl Key {
             Key::Control => EnigoKey::Control,
             Key::RControl => EnigoKey::RControl,
             Key::Meta => EnigoKey::Meta,
+            #[cfg(target_os = "macos")]
             Key::RCommand => EnigoKey::RCommand,
             Key::Shift => EnigoKey::Shift,
             Key::RShift => EnigoKey::RShift,
@@ -159,7 +163,9 @@ impl Key {
             Key::VolumeUp => EnigoKey::VolumeUp,
             Key::VolumeDown => EnigoKey::VolumeDown,
             Key::VolumeMute => EnigoKey::VolumeMute,
+            #[cfg(target_os = "macos")]
             Key::BrightnessUp => EnigoKey::BrightnessUp,
+            #[cfg(target_os = "macos")]
             Key::BrightnessDown => EnigoKey::BrightnessDown,
             Key::F1 => EnigoKey::F1,
             Key::F2 => EnigoKey::F2,
@@ -219,12 +225,16 @@ pub(crate) fn parse_key(input: &str) -> Option<Key> {
         "ctrl" => Some(Key::Control),
         "rctrl" => Some(Key::RControl),
         "meta" => Some(Key::Meta),
+        #[cfg(target_os = "macos")]
         "rmeta" => Some(Key::RCommand),
         "cmd" => Some(Key::Meta),
+        #[cfg(target_os = "macos")]
         "rcmd" => Some(Key::RCommand),
         "command" => Some(Key::Meta),
+        #[cfg(target_os = "macos")]
         "rcommand" => Some(Key::RCommand),
         "super" => Some(Key::Meta),
+        #[cfg(target_os = "macos")]
         "rsuper" => Some(Key::RCommand),
         "shift" => Some(Key::Shift),
         "alt" => Some(Key::Alt),
@@ -252,7 +262,10 @@ pub(crate) fn parse_key(input: &str) -> Option<Key> {
         "volume_up" => Some(Key::VolumeUp),
         "volume_down" => Some(Key::VolumeDown),
         "volume_mute" => Some(Key::VolumeMute),
+
+        #[cfg(target_os = "macos")]
         "brightness_up" => Some(Key::BrightnessUp),
+        #[cfg(target_os = "macos")]
         "brightness_down" => Some(Key::BrightnessDown),
 
         // Special characters

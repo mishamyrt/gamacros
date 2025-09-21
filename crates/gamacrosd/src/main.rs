@@ -3,6 +3,7 @@ mod logging;
 mod cli;
 mod runner;
 mod api;
+mod activity;
 
 use std::path::PathBuf;
 use std::{process, time::Duration};
@@ -11,7 +12,7 @@ use colored::Colorize;
 use crossbeam_channel::{select, unbounded};
 use clap::Parser;
 use lunchctl::{LaunchAgent, LaunchControllable};
-use nsworkspace::{Event as ActivityEvent, Monitor, NotificationListener};
+use crate::activity::{ActivityEvent, Monitor, NotificationListener};
 
 use gamacros_gamepad::{ControllerEvent, ControllerManager};
 use gamacros_control::Performer;

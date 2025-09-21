@@ -23,7 +23,6 @@ ctrlc = { workspace = true }
 crossbeam-channel = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }
-nsworkspace = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 lunchctl = { workspace = true }
 log = "0.4.26"
@@ -31,6 +30,9 @@ colored = "3.0.0"
 fern = "0.6.1"
 ahash = "0.8"
 bitcode = "0.6.7"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+nsworkspace = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }

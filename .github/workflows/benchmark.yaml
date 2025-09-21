@@ -13,7 +13,7 @@ env:
 jobs:
   benchmarks:
     name: Run benchmarks
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -28,20 +28,14 @@ jobs:
 
       - name: Setup sdl2
         run: |
-          brew install sdl2 pkg-config
-          echo "RUSTFLAGS=-L native=/opt/homebrew/lib -C link-args=-Wl,-rpath,/opt/homebrew/lib" >> $GITHUB_ENV
-
-      - name: Setup Just
-        uses: extractions/setup-just@v3
-        with:
-          just-version: ${{ env.JUST_VERSION }}
+          sudo apt update
+          sudo apt install -y libsdl2-dev
 
       - name: Build benchmarks
         run: cargo codspeed build
 
       - name: Run the benchmarks
-        run: cargo codspeed run
-        # uses: CodSpeedHQ/action@v3
-        # with:
-        #   run: cargo codspeed run
-        #   token: ${{ secrets.CODSPEED_TOKEN }}
+        uses: CodSpeedHQ/action@v3
+        with:
+          run: cargo codspeed run
+          token: ${{ secrets.CODSPEED_TOKEN }}

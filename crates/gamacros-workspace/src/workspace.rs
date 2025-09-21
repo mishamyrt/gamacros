@@ -31,12 +31,31 @@ impl Workspace {
         Ok(Self { path })
     }
 
+    #[cfg(target_os = "macos")]
     pub fn start_profile_watcher(
         &self,
-    ) -> Result<(ProfileWatcher, ProfileEventReceiver), WorkspaceError> {
+    ) -> Result<
+        (ProfileWatcher<notify::FsEventWatcher>, ProfileEventReceiver),
+        WorkspaceError,
+    > {
         let profile_path = self.profile_path();
 
-        ProfileWatcher::new_with_starting_event(&profile_path)
+        ProfileWatcher::<notify::FsEventWatcher>::new_with_starting_event(
+            &profile_path,
+        )
+        .map_err(WorkspaceError::WatcherError)
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub fn start_profile_watcher(
+        &self,
+    ) -> Result<
+        (ProfileWatcher<notify::PollWatcher>, ProfileEventReceiver),
+        WorkspaceError,
+    > {
+        let profile_path = self.profile_path();
+
+        ProfileWatcher::<notify::PollWatcher>::new_with_starting_event(&profile_path)
             .map_err(WorkspaceError::WatcherError)
     }
 

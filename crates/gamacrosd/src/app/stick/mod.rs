@@ -22,12 +22,17 @@ impl StepperMode {
                     gamacros_control::Key::VolumeDown
                 }
             }
+            #[cfg(target_os = "macos")]
             StepperMode::Brightness => {
                 if positive {
                     gamacros_control::Key::BrightnessUp
                 } else {
                     gamacros_control::Key::BrightnessDown
                 }
+            }
+            #[cfg(not(target_os = "macos"))]
+            StepperMode::Brightness => {
+                unimplemented!()
             }
         }
     }

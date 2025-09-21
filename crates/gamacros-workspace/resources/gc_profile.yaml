@@ -40,7 +40,7 @@ rules:
     buttons:
       l1:
         vibrate: 100
-        keystroke: rcmd
+        keystroke: cmd
       b:
         keystroke: enter
       a:

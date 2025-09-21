@@ -2,11 +2,11 @@ use std::time::Duration;
 use std::{fs, path::Path};
 use std::sync::mpsc;
 
-use notify::{Config, Error as NotifyError, FsEventWatcher, RecursiveMode};
+use thiserror::Error;
+use notify::{Config, Error as NotifyError, RecursiveMode};
 use notify_debouncer_mini::{
     new_debouncer_opt, DebounceEventResult, DebouncedEventKind, Debouncer,
 };
-use thiserror::Error;
 
 use crate::profile_parse::parse_profile;
 use crate::profile::{ProfileError, Profile};
@@ -19,11 +19,6 @@ pub enum WatcherError {
     Io(#[from] std::io::Error),
     #[error("parse error: {0}")]
     Parse(#[from] ProfileError),
-}
-
-pub struct ProfileWatcher {
-    #[allow(dead_code)]
-    watcher: Debouncer<FsEventWatcher>,
 }
 
 pub enum ProfileEvent {
@@ -53,7 +48,12 @@ fn send_profile_event(path: &Path, tx: &ProfileEventSender) {
     };
 }
 
-impl ProfileWatcher {
+#[allow(dead_code)]
+pub struct ProfileWatcher<W: notify::Watcher> {
+    watcher: Debouncer<W>,
+}
+
+impl<W: notify::Watcher> ProfileWatcher<W> {
     pub fn new_with_sender(
         path: &Path,
         tx: ProfileEventSender,
@@ -64,8 +64,8 @@ impl ProfileWatcher {
         let debouncer_config = notify_debouncer_mini::Config::default()
             .with_timeout(Duration::from_millis(1000))
             .with_notify_config(Config::default());
-        // select backend via fish operator, here PollWatcher backend
-        let mut debouncer = new_debouncer_opt::<_, notify::FsEventWatcher>(
+
+        let mut debouncer = new_debouncer_opt::<_, W>(
             debouncer_config,
             move |events: DebounceEventResult| match events {
                 Ok(events) => {
