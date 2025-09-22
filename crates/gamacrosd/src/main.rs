@@ -208,16 +208,15 @@ fn run_event_loop(maybe_workspace_path: Option<PathBuf>) {
             ControllerManager::new().expect("failed to start controller manager");
         let rx = manager.subscribe();
         let mut keypress = Performer::new().expect("failed to start keypress");
-        // Adaptive, conditional ticking: start disabled, enable only when needed.
-        let mut tick_rx = crossbeam_channel::never::<std::time::Instant>();
-        let mut repeat_rx = crossbeam_channel::never::<std::time::Instant>();
+        // Single coalesced wake timer: earliest of movement tick and repeat deadlines.
+        let mut wake_rx = crossbeam_channel::never::<std::time::Instant>();
         let idle_period = Duration::from_millis(16);
         let fast_period = Duration::from_millis(10);
         let mut ticking_enabled = false;
         let mut fast_mode = false;
         let mut fast_until = std::time::Instant::now();
-        let mut need_reschedule_tick = true;
-        let mut need_reschedule_repeat = true;
+        let mut next_tick_due: Option<std::time::Instant> = None;
+        let mut need_reschedule_wake = true;
 
         let workspace = match Workspace::new(workspace_path.as_deref()) {
             Ok(workspace) => workspace,
@@ -254,12 +253,12 @@ fn run_event_loop(maybe_workspace_path: Option<PathBuf>) {
                             }
 
                             gamacros.add_controller(info);
-                            need_reschedule_tick = true;
+                            need_reschedule_wake = true;
                         }
                         Ok(ControllerEvent::Disconnected(id)) => {
                             gamacros.remove_controller(id);
                             gamacros.on_controller_disconnected(id);
-                            need_reschedule_tick = true;
+                            need_reschedule_wake = true;
                         }
                         Ok(ControllerEvent::ButtonPressed { id, button }) => {
                             gamacros.on_button_with(id, button, ButtonPhase::Pressed, |action| {
@@ -299,26 +298,26 @@ fn run_event_loop(maybe_workspace_path: Option<PathBuf>) {
                         }
                     }
                 }
-                recv(tick_rx) -> _ => {
-                    // Perform tick work
-                    gamacros.on_tick_with(|action| {
-                        action_runner.run(action);
-                    });
-                    // Update adaptive mode hints
+                recv(wake_rx) -> _ => {
                     let now = std::time::Instant::now();
-                    if gamacros.wants_fast_tick() {
-                        fast_mode = true;
-                        fast_until = now + Duration::from_millis(250);
-                    } else if fast_mode && now >= fast_until {
-                        fast_mode = false;
+                    // Run movement tick if due
+                    if let Some(due) = next_tick_due {
+                        if now >= due {
+                            gamacros.on_tick_with(|action| {
+                                action_runner.run(action);
+                            });
+                            // Update adaptive mode hints
+                            if gamacros.wants_fast_tick() {
+                                fast_mode = true;
+                                fast_until = now + Duration::from_millis(250);
+                            } else if fast_mode && now >= fast_until {
+                                fast_mode = false;
+                            }
+                        }
                     }
-                    // Schedule next tick or disable (outside select)
-                    need_reschedule_tick = true;
-                }
-                recv(repeat_rx) -> _ => {
-                    let now = std::time::Instant::now();
+                    // Run repeats due (may be multiple)
                     gamacros.process_due_repeats(now, |action| { action_runner.run(action); });
-                    need_reschedule_repeat = true;
+                    need_reschedule_wake = true;
                 }
             }
             while let Ok(msg) = activity_std_rx.try_recv() {
@@ -327,8 +326,7 @@ fn run_event_loop(maybe_workspace_path: Option<PathBuf>) {
                 };
                 gamacros.set_active_app(&bundle_id);
                 // App change may alter stick modes; mark for reschedule
-                need_reschedule_tick = true;
-                need_reschedule_repeat = true;
+                need_reschedule_wake = true;
             }
             let Some(workspace_rx) = maybe_workspace_rx.as_ref() else {
                 continue;
@@ -342,23 +340,21 @@ fn run_event_loop(maybe_workspace_path: Option<PathBuf>) {
                             action_runner.set_shell(shell);
                         }
                         gamacros.set_workspace(workspace);
-                        need_reschedule_tick = true;
-                        need_reschedule_repeat = true;
+                        need_reschedule_wake = true;
                     }
                     ProfileEvent::Removed => {
                         gamacros.remove_workspace();
-                        need_reschedule_tick = true;
-                        need_reschedule_repeat = true;
+                        need_reschedule_wake = true;
                     }
                     ProfileEvent::Error(error) => {
                         print_error!("profile error: {error}");
                     }
                 }
             }
-            if need_reschedule_tick {
+            if need_reschedule_wake {
                 let now = std::time::Instant::now();
-                let need = gamacros.needs_tick();
-                if need {
+                // Recompute next tick due
+                if gamacros.needs_tick() {
                     if !ticking_enabled {
                         fast_mode = gamacros.wants_fast_tick();
                         if fast_mode {
@@ -366,23 +362,29 @@ fn run_event_loop(maybe_workspace_path: Option<PathBuf>) {
                         }
                     }
                     let period = if fast_mode { fast_period } else { idle_period };
-                    tick_rx = crossbeam_channel::after(period);
+                    next_tick_due = Some(now + period);
                     ticking_enabled = true;
                 } else {
-                    tick_rx = crossbeam_channel::never();
+                    next_tick_due = None;
                     ticking_enabled = false;
                 }
-                need_reschedule_tick = false;
-            }
-            if need_reschedule_repeat {
-                if let Some(due) = gamacros.next_repeat_due() {
-                    let now = std::time::Instant::now();
+                // Recompute next repeat due
+                let repeat_due = gamacros.next_repeat_due();
+
+                // Arm single wake for the earliest deadline
+                let next_due = match (next_tick_due, repeat_due) {
+                    (Some(a), Some(b)) => Some(core::cmp::min(a, b)),
+                    (Some(a), None) => Some(a),
+                    (None, Some(b)) => Some(b),
+                    (None, None) => None,
+                };
+                if let Some(due) = next_due {
                     let dur = if due > now { due - now } else { Duration::from_millis(0) };
-                    repeat_rx = crossbeam_channel::after(dur);
+                    wake_rx = crossbeam_channel::after(dur);
                 } else {
-                    repeat_rx = crossbeam_channel::never();
+                    wake_rx = crossbeam_channel::never();
                 }
-                need_reschedule_repeat = false;
+                need_reschedule_wake = false;
             }
         }
     }).expect("failed to spawn event loop thread");
