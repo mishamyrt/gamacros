@@ -21,6 +21,18 @@ Highly effective conversion of a gamepad into a macropad for applications. Gamac
 3. On button press/release, the active app’s rules are evaluated. Matching rules generate actions.
 4. Actions send key events; optional rumble is dispatched if supported.
 
+## Installation
+
+### Script
+
+You can use a simple [script](https://github.com/mishamyrt/gamacros/blob/refs/heads/main/scripts/install.sh) to install gamacros.
+It will download the latest version of the binary and install it to the system.
+
+```bash
+# Install latest version
+curl -sSfL https://raw.githubusercontent.com/mishamyrt/gamacros/refs/heads/main/scripts/install.sh | bash
+```
+
 ## Usage
 
 - Put a `.gc_profile.yaml` in the `$HOME` directory.
