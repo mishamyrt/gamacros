@@ -188,6 +188,22 @@ impl Gamacros {
             .on_tick_with(bindings_ref, &axes_scratch, sink);
     }
 
+    /// Return next due time for any repeat task, if any.
+    pub fn next_repeat_due(&self) -> Option<std::time::Instant> {
+        // Borrow mutably internally to read/update heap staleness cheaply.
+        // Safety: RefCell ensures single mutable borrow.
+        self.sticks.borrow_mut().next_repeat_due()
+    }
+
+    /// Process repeat tasks due up to `now`.
+    pub fn process_due_repeats<F: FnMut(Action)>(
+        &self,
+        now: std::time::Instant,
+        mut sink: F,
+    ) {
+        self.sticks.borrow_mut().process_due_repeats(now, &mut sink);
+    }
+
     /// Whether any periodic processing is needed right now.
     /// True when there are tick-requiring stick modes with at least one controller,
     /// or when repeat tasks are active (to drain their timers).

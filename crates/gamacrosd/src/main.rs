@@ -210,12 +210,14 @@ fn run_event_loop(maybe_workspace_path: Option<PathBuf>) {
         let mut keypress = Performer::new().expect("failed to start keypress");
         // Adaptive, conditional ticking: start disabled, enable only when needed.
         let mut tick_rx = crossbeam_channel::never::<std::time::Instant>();
+        let mut repeat_rx = crossbeam_channel::never::<std::time::Instant>();
         let idle_period = Duration::from_millis(16);
         let fast_period = Duration::from_millis(10);
         let mut ticking_enabled = false;
         let mut fast_mode = false;
         let mut fast_until = std::time::Instant::now();
         let mut need_reschedule_tick = true;
+        let mut need_reschedule_repeat = true;
 
         let workspace = match Workspace::new(workspace_path.as_deref()) {
             Ok(workspace) => workspace,
@@ -313,6 +315,11 @@ fn run_event_loop(maybe_workspace_path: Option<PathBuf>) {
                     // Schedule next tick or disable (outside select)
                     need_reschedule_tick = true;
                 }
+                recv(repeat_rx) -> _ => {
+                    let now = std::time::Instant::now();
+                    gamacros.process_due_repeats(now, |action| { action_runner.run(action); });
+                    need_reschedule_repeat = true;
+                }
             }
             while let Ok(msg) = activity_std_rx.try_recv() {
                 let ActivityEvent::DidActivateApplication(bundle_id) = msg else {
@@ -321,6 +328,7 @@ fn run_event_loop(maybe_workspace_path: Option<PathBuf>) {
                 gamacros.set_active_app(&bundle_id);
                 // App change may alter stick modes; mark for reschedule
                 need_reschedule_tick = true;
+                need_reschedule_repeat = true;
             }
             let Some(workspace_rx) = maybe_workspace_rx.as_ref() else {
                 continue;
@@ -335,10 +343,12 @@ fn run_event_loop(maybe_workspace_path: Option<PathBuf>) {
                         }
                         gamacros.set_workspace(workspace);
                         need_reschedule_tick = true;
+                        need_reschedule_repeat = true;
                     }
                     ProfileEvent::Removed => {
                         gamacros.remove_workspace();
                         need_reschedule_tick = true;
+                        need_reschedule_repeat = true;
                     }
                     ProfileEvent::Error(error) => {
                         print_error!("profile error: {error}");
@@ -363,6 +373,16 @@ fn run_event_loop(maybe_workspace_path: Option<PathBuf>) {
                     ticking_enabled = false;
                 }
                 need_reschedule_tick = false;
+            }
+            if need_reschedule_repeat {
+                if let Some(due) = gamacros.next_repeat_due() {
+                    let now = std::time::Instant::now();
+                    let dur = if due > now { due - now } else { Duration::from_millis(0) };
+                    repeat_rx = crossbeam_channel::after(dur);
+                } else {
+                    repeat_rx = crossbeam_channel::never();
+                }
+                need_reschedule_repeat = false;
             }
         }
     }).expect("failed to spawn event loop thread");

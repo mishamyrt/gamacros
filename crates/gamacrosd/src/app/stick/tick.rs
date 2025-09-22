@@ -65,7 +65,7 @@ impl StickProcessor {
             self.tick_scroll(&mut sink, axes_list, bindings);
         }
 
-        self.repeater_drain_due(now, &mut sink);
+        // Repeat draining is now event-driven, cleanup still needs to run per generation
         self.repeater_cleanup_inactive();
     }
 
