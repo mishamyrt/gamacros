@@ -7,7 +7,9 @@ use colored::Colorize;
 use gamacros_control::KeyCombo;
 use gamacros_bit_mask::Bitmask;
 use gamacros_gamepad::{Button, ControllerId, ControllerInfo, Axis as CtrlAxis};
-use gamacros_workspace::{ButtonAction, ControllerSettings, Macros, Profile, StickRules};
+use gamacros_workspace::{
+    ButtonAction, ControllerSettings, Macros, Profile, StickRules, StickMode,
+};
 
 use crate::{app::ButtonPhase, print_debug, print_info};
 use super::stick::{StickProcessor, CompiledStickRules};
@@ -184,6 +186,61 @@ impl Gamacros {
         self.sticks
             .borrow_mut()
             .on_tick_with(bindings_ref, &axes_scratch, sink);
+    }
+
+    /// Whether any periodic processing is needed right now.
+    /// True when there are tick-requiring stick modes with at least one controller,
+    /// or when repeat tasks are active (to drain their timers).
+    pub fn needs_tick(&self) -> bool {
+        (self.has_tick_modes() && !self.controllers.is_empty())
+            || self.sticks.borrow().has_active_repeats()
+    }
+
+    /// Hint whether a faster tick would improve responsiveness.
+    /// True when there is recent/ongoing axis activity or repeat tasks are active.
+    pub fn wants_fast_tick(&self) -> bool {
+        self.has_axis_activity(0.05) || self.sticks.borrow().has_active_repeats()
+    }
+
+    /// Whether the current profile has any stick modes that require periodic ticks.
+    fn has_tick_modes(&self) -> bool {
+        let Some(bindings) = self.get_compiled_stick_rules() else {
+            return false;
+        };
+        matches!(
+            bindings.left(),
+            Some(
+                StickMode::Arrows(_)
+                    | StickMode::Volume(_)
+                    | StickMode::Brightness(_)
+                    | StickMode::MouseMove(_)
+                    | StickMode::Scroll(_)
+            )
+        ) || matches!(
+            bindings.right(),
+            Some(
+                StickMode::Arrows(_)
+                    | StickMode::Volume(_)
+                    | StickMode::Brightness(_)
+                    | StickMode::MouseMove(_)
+                    | StickMode::Scroll(_)
+            )
+        )
+    }
+
+    /// Detect if any controller axis deviates beyond a small threshold.
+    fn has_axis_activity(&self, threshold: f32) -> bool {
+        if self.controllers.is_empty() {
+            return false;
+        }
+        for (_id, st) in self.controllers.iter() {
+            for v in st.axes.iter() {
+                if v.abs() >= threshold {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     pub fn on_button_with<F: FnMut(Action)>(
