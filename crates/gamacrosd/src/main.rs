@@ -272,6 +272,8 @@ fn run_event_loop(maybe_workspace_path: Option<PathBuf>) {
                         }
                         Ok(ControllerEvent::AxisMotion { id, axis, value }) => {
                             gamacros.on_axis_motion(id, axis, value);
+                            // Axis moved: if previously gated by neutral, re-arm wake.
+                            need_reschedule_wake = true;
                         }
                         Err(err) => {
                             print_error!("event channel closed: {err}");
