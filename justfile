@@ -1,6 +1,6 @@
 set export := true
 
-VERSION := "0.1.1"
+VERSION := "0.1.2"
 
 BIN_PATH_RELEASE := "target/release/gamacrosd"
 BIN_PATH_DEBUG := "target/debug/gamacrosd"

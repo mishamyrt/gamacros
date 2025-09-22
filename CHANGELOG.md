@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.2](https://github.com/mishamyrt/gamacros/compare/v0.1.1..v0.1.2) - 2025-09-22
+
+### 🚜 Refactor
+
+- Fully migrate to ahash
+- Split stick logic
+- Migrate macros to smallvec
+- Avoid extra if
+- Optimize selector parsing
+- Commonize combo parsers
+- Combined timers
+
+### ⚡ Performance
+
+- Optimize button handling algorithm
+- Add fast path for logging
+- Dynamically adjust polling rate
+- Add event driven scheduling
+- Add neutral-axis gating
+- Add fast gamma path
+- Reuse scratch buffer to avoid per-tick allocation
+
 ## [0.1.1](https://github.com/mishamyrt/gamacros/compare/v0.1.0..v0.1.1) - 2025-09-19
 
 ### 🚀 Features
