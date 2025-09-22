@@ -261,14 +261,7 @@ impl StickProcessor {
                 let mag_raw = magnitude2d(x, y);
                 if mag_raw >= params.deadzone {
                     let base = normalize_after_deadzone(mag_raw, params.deadzone);
-                    let gamma = params.gamma.max(0.1);
-                    let mag = if (gamma - 1.0).abs() < 1e-6 {
-                        base
-                    } else if (gamma - 2.0).abs() < 1e-6 {
-                        base * base
-                    } else {
-                        base.powf(gamma)
-                    };
+                    let mag = Self::fast_gamma(base, params.gamma);
                     if mag > 0.0 {
                         let dir_x = x / mag_raw;
                         let dir_y = y / mag_raw;
@@ -288,14 +281,7 @@ impl StickProcessor {
                 let mag_raw = magnitude2d(x, y);
                 if mag_raw >= params.deadzone {
                     let base = normalize_after_deadzone(mag_raw, params.deadzone);
-                    let gamma = params.gamma.max(0.1);
-                    let mag = if (gamma - 1.0).abs() < 1e-6 {
-                        base
-                    } else if (gamma - 2.0).abs() < 1e-6 {
-                        base * base
-                    } else {
-                        base.powf(gamma)
-                    };
+                    let mag = Self::fast_gamma(base, params.gamma);
                     if mag > 0.0 {
                         let dir_x = x / mag_raw;
                         let dir_y = y / mag_raw;
@@ -309,6 +295,24 @@ impl StickProcessor {
                     }
                 }
             }
+        }
+    }
+
+    #[inline]
+    fn fast_gamma(base: f32, gamma: f32) -> f32 {
+        let g = gamma.max(0.1);
+        if (g - 1.0).abs() < 1e-6 {
+            base
+        } else if (g - 0.5).abs() < 1e-6 {
+            base.sqrt()
+        } else if (g - 1.5).abs() < 1e-6 {
+            base * base.sqrt()
+        } else if (g - 2.0).abs() < 1e-6 {
+            base * base
+        } else if (g - 3.0).abs() < 1e-6 {
+            base * base * base
+        } else {
+            base.powf(g)
         }
     }
 
