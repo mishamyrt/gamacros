@@ -19,7 +19,7 @@ start *ARGS:
 
 [group: 'build']
 install:
-  cargo install --path crates/gamacrosd
+  cargo install --profile release --path crates/gamacrosd
 
 [group: 'build']
 build: build-release
