@@ -2,6 +2,7 @@ mod strings;
 mod parse;
 mod profile;
 mod selector;
+mod combo;
 
 use thiserror::Error;
 

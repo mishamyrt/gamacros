@@ -16,6 +16,7 @@ use super::Error;
 use super::profile::{ProfileV1, ProfileV1App, ProfileV1ControllerSettings};
 use super::strings::COMMON_BUNDLE_ID;
 use super::selector::Selector;
+use super::combo::parse_terms_with_delim;
 
 impl ProfileV1 {
     pub fn parse(&self) -> Result<Profile, Error> {
@@ -155,7 +156,7 @@ fn parse_app_rules(raw: ProfileV1App, bundle_id: &str) -> Result<AppRules, Error
 }
 
 fn parse_stick_side(raw: &str) -> Result<StickSide, Error> {
-    Ok(match raw.to_lowercase().as_str() {
+    Ok(match raw {
         "left" => StickSide::Left,
         "right" => StickSide::Right,
         other => return Err(Error::InvalidStickSide(other.to_string())),
@@ -164,9 +165,10 @@ fn parse_stick_side(raw: &str) -> Result<StickSide, Error> {
 
 fn parse_chord(input: &str) -> Result<ButtonChord, Error> {
     let mut set = ButtonChord::empty();
-    for part in input.split('+') {
-        let name = part.trim().to_lowercase();
-        let button = parse_button_name(&name)?;
+    for term in parse_terms_with_delim(input, '+')
+        .map_err(|e| Error::InvalidTrigger(format!("{input}: {e:?}")))?
+    {
+        let button = parse_button_name(term.trim())?;
         set.insert(button);
     }
     if set.is_empty() {
