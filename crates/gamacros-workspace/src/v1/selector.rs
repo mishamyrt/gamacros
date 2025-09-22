@@ -1,5 +1,6 @@
 use ahash::AHashMap;
 use thiserror::Error;
+use super::combo::{parse_terms_with_delim, SequenceError, SequenceErrorKind};
 
 pub(crate) type SelectorResult<T> = Result<T, SelectorError>;
 
@@ -24,16 +25,6 @@ enum Lexem<'a> {
 }
 
 impl<'a> Lexem<'a> {
-    /// Get the next lexem from the input string.
-    fn next(input: &'a str) -> (Option<Self>, &'a str) {
-        let Some((token, rest)) = next_token(input) else {
-            return (None, input);
-        };
-        let lexem = Self::parse(token);
-
-        (Some(lexem), rest)
-    }
-
     fn parse(token: &'a str) -> Self {
         if token == "|" {
             return Self::OperatorOr;
@@ -43,34 +34,6 @@ impl<'a> Lexem<'a> {
         }
         Self::BundleId(token)
     }
-}
-
-/// Get the next selector token from the input string.
-fn next_token(input: &str) -> Option<(&str, &str)> {
-    // Skip leading whitespace
-    let input = input.trim_start();
-    if input.is_empty() {
-        return None;
-    }
-
-    // If the next character is a pipe, return it as a separate token
-    if input.as_bytes()[0] == b'|' {
-        return Some(("|", &input[1..]));
-    }
-
-    // Otherwise, read until next whitespace or pipe
-    for (i, ch) in input.char_indices() {
-        if ch == '|' {
-            return Some((&input[..i], &input[i..]));
-        }
-        if ch.is_whitespace() {
-            // Trim all subsequent whitespace in the rest for stable tokenization
-            let rest = input[i..].trim_start();
-            return Some((&input[..i], rest));
-        }
-    }
-
-    Some((input, ""))
 }
 
 /// A selector is an app list with groups and bundle ids.
@@ -108,39 +71,23 @@ impl<'a> Selector<'a> {
 
     /// Parses the selector string and validates it. Returns a vector of tokens.
     pub(crate) fn parse(input: &'a str) -> SelectorResult<Self> {
-        let mut selector = Vec::new();
-        let mut last_lexem: Option<Lexem<'a>> = None;
-
-        let mut input = input;
-        while let (Some(lexem), rest) = Lexem::next(input) {
-            input = rest;
-            match lexem {
-                Lexem::OperatorOr => {
-                    // Reject leading OR and consecutive ORs
-                    if last_lexem.is_none() || last_lexem == Some(Lexem::OperatorOr)
-                    {
-                        return Err(SelectorError::InvalidOperatorOr(
-                            input.to_string(),
-                        ));
+        let terms = match parse_terms_with_delim(input, '|') {
+            Ok(t) => t,
+            Err(SequenceError { rest, kind }) => {
+                return Err(match kind {
+                    SequenceErrorKind::LeadingOperator
+                    | SequenceErrorKind::TrailingOperator
+                    | SequenceErrorKind::DoubleOperator => {
+                        SelectorError::InvalidOperatorOr(rest.to_string())
                     }
-                }
-                Lexem::Group(_) | Lexem::BundleId(_) => {
-                    if !selector.is_empty() && last_lexem != Some(Lexem::OperatorOr)
-                    {
-                        return Err(SelectorError::InvalidGroupAndBundleId(
-                            input.to_string(),
-                        ));
+                    SequenceErrorKind::MissingOperatorBetweenTerms => {
+                        SelectorError::InvalidGroupAndBundleId(rest.to_string())
                     }
-                    selector.push(lexem);
-                }
+                })
             }
-            last_lexem = Some(lexem);
-        }
+        };
 
-        // Reject trailing OR
-        if last_lexem == Some(Lexem::OperatorOr) {
-            return Err(SelectorError::InvalidOperatorOr(String::new()));
-        }
+        let selector = terms.into_iter().map(Lexem::parse).collect::<Vec<_>>();
 
         Ok(Self(selector))
     }
@@ -153,32 +100,40 @@ mod tests {
     // -------- tokenizer (next_token)
     #[test]
     fn tokenizer_splits_on_space_and_preserves_rest() {
+        use super::super::combo::next_token_with;
         let input = "$ide | com.apple.Safari";
-        let (tok, rest) = next_token(input).expect("should find first token");
+        let (tok, rest) =
+            next_token_with(input, '|').expect("should find first token");
         assert_eq!(tok, "$ide");
         assert_eq!(rest, "| com.apple.Safari");
     }
 
     #[test]
     fn tokenizer_handles_single_token_without_spaces() {
+        use super::super::combo::next_token_with;
         let input = "com.apple.Safari";
-        let (tok, rest) = next_token(input).expect("should return single token");
+        let (tok, rest) =
+            next_token_with(input, '|').expect("should return single token");
         assert_eq!(tok, "com.apple.Safari");
         assert_eq!(rest, "");
     }
 
     #[test]
     fn tokenizer_splits_on_pipe_without_spaces() {
+        use super::super::combo::next_token_with;
         let input = "$ide|com.apple.Safari";
-        let (tok, rest) = next_token(input).expect("should find first token");
+        let (tok, rest) =
+            next_token_with(input, '|').expect("should find first token");
         assert_eq!(tok, "$ide");
         assert_eq!(rest, "|com.apple.Safari");
     }
 
     #[test]
     fn tokenizer_skips_multiple_spaces() {
+        use super::super::combo::next_token_with;
         let input = "$ide   |   com.apple.Safari";
-        let (tok, rest) = next_token(input).expect("should find first token");
+        let (tok, rest) =
+            next_token_with(input, '|').expect("should find first token");
         assert_eq!(tok, "$ide");
         assert_eq!(rest, "|   com.apple.Safari");
     }
