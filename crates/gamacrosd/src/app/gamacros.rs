@@ -42,6 +42,7 @@ pub struct Gamacros {
     sticks: RefCell<StickProcessor>,
     active_stick_rules: Option<Arc<StickRules>>, // keep original for potential future use
     compiled_stick_rules: Option<CompiledStickRules>,
+    axes_scratch: Vec<(ControllerId, [f32; 6])>,
 }
 
 impl Default for Gamacros {
@@ -59,6 +60,7 @@ impl Gamacros {
             sticks: RefCell::new(StickProcessor::new()),
             active_stick_rules: None,
             compiled_stick_rules: None,
+            axes_scratch: Vec::new(),
         }
     }
 
@@ -176,16 +178,17 @@ impl Gamacros {
     }
 
     pub fn on_tick_with<F: FnMut(Action)>(&mut self, sink: F) {
-        let bindings_ref = self.get_compiled_stick_rules();
-        // Avoid borrowing self while calling into sticks; use a local buffer
-        let mut axes_scratch: Vec<(ControllerId, [f32; 6])> =
-            Vec::with_capacity(self.controllers.len());
+        let bindings_owned = self.get_compiled_stick_rules().cloned();
+        self.axes_scratch.clear();
+        self.axes_scratch.reserve(self.controllers.len());
         for (id, st) in self.controllers.iter() {
-            axes_scratch.push((*id, st.axes));
+            self.axes_scratch.push((*id, st.axes));
         }
-        self.sticks
-            .borrow_mut()
-            .on_tick_with(bindings_ref, &axes_scratch, sink);
+        self.sticks.borrow_mut().on_tick_with(
+            bindings_owned.as_ref(),
+            &self.axes_scratch,
+            sink,
+        );
     }
 
     /// Return next due time for any repeat task, if any.
