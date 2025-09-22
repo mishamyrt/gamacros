@@ -69,7 +69,7 @@ impl StickProcessor {
         self.repeater_cleanup_inactive();
     }
 
-    fn has_active_repeats(&self) -> bool {
+    pub fn has_active_repeats(&self) -> bool {
         for (_cid, ctrl) in self.controllers.iter() {
             for side in ctrl.sides.iter() {
                 if side.arrows.iter().any(|s| s.is_some())
