@@ -381,7 +381,7 @@ fn run_event_loop(maybe_workspace_path: Option<PathBuf>) {
                     (None, None) => None,
                 };
                 if let Some(due) = next_due {
-                    let dur = if due > now { due - now } else { Duration::from_millis(0) };
+                    let dur = if due > now { due - now } else { Duration::ZERO };
                     wake_rx = crossbeam_channel::after(dur);
                 } else {
                     wake_rx = crossbeam_channel::never();
