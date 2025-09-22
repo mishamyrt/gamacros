@@ -205,10 +205,10 @@ impl Gamacros {
     }
 
     /// Whether any periodic processing is needed right now.
-    /// True when there are tick-requiring stick modes with at least one controller,
+    /// True when there are tick-requiring stick modes and some axis deviates from neutral,
     /// or when repeat tasks are active (to drain their timers).
     pub fn needs_tick(&self) -> bool {
-        (self.has_tick_modes() && !self.controllers.is_empty())
+        (self.has_tick_modes() && self.has_axis_activity(0.05))
             || self.sticks.borrow().has_active_repeats()
     }
 
